@@ -196,9 +196,13 @@ def main() -> int:
         "(() => {\n"
         '  "use strict";\n'
         "  const ZS = (window.ZS = window.ZS || {});\n"
-        f'  ZS.FONT_DATA_URL = "{data_url}";\n'
+        # Wrapped exactly as oxfmt wants it: the generated file lives under
+        # js/, so `npm run format` would otherwise rewrite it every rebuild.
+        "  ZS.FONT_DATA_URL =\n"
+        f'    "{data_url}";\n'
         "})();\n",
         encoding="utf-8",
+        newline="\n",
     )
     print(f"wrote {js.relative_to(ROOT)} ({len(data_url) / 1024:.0f} KB base64)")
     return 0
