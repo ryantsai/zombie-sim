@@ -256,6 +256,24 @@ why this is P4's problem and not P3's. The natural probe is a fixed
 `BattleSetup` fought both ways over a spread of seeds, comparing winner rate
 and loss ratio.
 
+**What it looks like now.** A passive-player probe from 曹操, eight seasons in
+(`.verify/sanguo-campaign-turn9.png`): six commanderies changed hands, several
+garrisons had been ground down to double digits, and 馬騰 had taken both 長安
+and 襄陽 — opposite ends of the map. The board is alive, which is what P3
+needed, but it is also *too* decisive: assaults are cheap enough that a stack
+can chain conquests without ever needing to stop and rebuild.
+
+Two candidates, and they are separable:
+
+- the model itself — `loserFrac` starts at 0.30 even for a lopsided win, so a
+  garrison rarely survives two assaults;
+- the AI's nerve (`js/campaign/ai.js`, `NERVE`) and the fact that a stack
+  re-plans every season with no cost to changing its mind.
+
+Tune the model first: the AI is estimating the fight it will actually get, so
+a less decisive assault should make a `wary` warlord genuinely cautious without
+touching the planner.
+
 Interacts with issue 3: a played-out battle's losses are whatever the sim
 produced, so tuning the closed form against it inherits whatever the pacing
 constants are doing.
