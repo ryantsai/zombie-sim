@@ -46,6 +46,8 @@
     panels: {},
     panel: "main",
     toastT: null,
+    infoSig: "",
+    infoNext: 0,
 
     build(app) {
       this.app = app;
@@ -60,6 +62,8 @@
 
       this.battleBar = this._battleBar();
       this.root.appendChild(this.battleBar);
+      this.battleInfo = this._battleInfo();
+      this.root.appendChild(this.battleInfo);
 
       this.toast = el("div", { id: "toast", class: "toast" });
       this.root.appendChild(this.toast);
@@ -69,6 +73,11 @@
         this._syncLang();
         if (this.panel === "load") this.refreshSlots();
         this._syncAbout();
+        this.updateBattleSelection(
+          ZS.Command ? ZS.Command.selection : [],
+          ZS.Command ? ZS.Command.scen : null,
+          true,
+        );
       });
 
       this.show("main");
@@ -83,6 +92,7 @@
       const inBattle = state === "battle";
       this.root.classList.toggle("in-battle", inBattle);
       this.battleBar.classList.toggle("on", inBattle);
+      if (!inBattle) this.updateBattleSelection([], null, true);
       for (const k in this.panels) {
         if (inBattle) this.panels[k].classList.remove("on");
       }
@@ -104,6 +114,106 @@
       return bar;
     },
 
+    _battleInfo() {
+      this.infoTitle = el("div", { class: "battle-info-title" });
+      this.infoStrength = el("div", { class: "battle-info-line" });
+      this.infoMorale = el("div", { class: "battle-info-line" });
+      this.infoOrder = el("div", { class: "battle-info-line faint" });
+      return el(
+        "section",
+        {
+          id: "battle-info",
+          class: "battle-info",
+          "aria-label": ZS.i18n.t("battle.info.label"),
+          "aria-hidden": "true",
+        },
+        [this.infoTitle, this.infoStrength, this.infoMorale, this.infoOrder],
+      );
+    },
+
+    updateBattleSelection(selection, scen, force) {
+      if (!this.battleInfo) return;
+      if (!selection || !selection.length || !scen) {
+        this.infoSig = "";
+        this.battleInfo.classList.remove("on");
+        this.battleInfo.setAttribute("aria-hidden", "true");
+        return;
+      }
+      let total = 0,
+        alive = 0,
+        routed = 0,
+        morale = 0,
+        moraleMax = 0,
+        fatigue = 0,
+        orders = 0;
+      for (let i = 0; i < selection.length; i++) {
+        const u = selection[i];
+        total += u.size0;
+        alive += u.alive;
+        routed += u.routAlive;
+        morale += u.morale;
+        moraleMax += u.moraleMax;
+        fatigue += u.avgFatigue;
+        orders += u.orders.length;
+      }
+      const one = selection.length === 1 ? selection[0] : null;
+      const dead = Math.max(0, total - alive - routed);
+      const avgFatigue = Math.round((fatigue / selection.length) * 100);
+      const sig = [
+        selection.length,
+        one ? one.uid : 0,
+        alive,
+        routed,
+        dead,
+        Math.round(morale),
+        Math.round(moraleMax),
+        avgFatigue,
+        orders,
+        one ? one.st : -1,
+        one ? one.morState : -1,
+        one ? one.form : "",
+      ].join("|");
+      if (!force && sig === this.infoSig) return;
+      this.infoSig = sig;
+
+      const t = (key, params) => ZS.i18n.t(key, params);
+      const typeKey =
+        one && ZS.ScenarioSanguo.TYPE_KEYS[one.type]
+          ? ZS.ScenarioSanguo.TYPE_KEYS[one.type]
+          : "standard";
+      this.infoTitle.textContent = one
+        ? t("battle.type." + typeKey)
+        : t("battle.info.multiple", { n: selection.length });
+      this.infoStrength.textContent = t("battle.info.strength", { alive, total, dead, routed });
+
+      const moraleState = one
+        ? one.morState
+        : moraleMax > 0 && morale / moraleMax <= 0.44
+          ? ZS.BattleMorale.WAVERING
+          : ZS.BattleMorale.STEADY;
+      const moraleKey =
+        moraleState === ZS.BattleMorale.ROUTING ? "routing" : moraleState ? "wavering" : "steady";
+      this.infoMorale.textContent = t("battle.info.morale", {
+        morale: Math.round(morale),
+        max: Math.round(moraleMax),
+        state: t("battle.morale." + moraleKey),
+        fatigue: avgFatigue,
+      });
+      if (one) {
+        const stateKeys = ["hold", "move", "attack", "charge", "rout"];
+        this.infoOrder.textContent = t("battle.info.order", {
+          state: t("battle.state." + (stateKeys[one.st] || "hold")),
+          formation: t("battle.form." + one.form),
+          orders,
+        });
+      } else {
+        this.infoOrder.textContent = t("battle.info.orders", { orders });
+      }
+      this.battleInfo.setAttribute("aria-label", t("battle.info.label"));
+      this.battleInfo.setAttribute("aria-hidden", "false");
+      this.battleInfo.classList.add("on");
+    },
+
     /* The bar reads the engine rather than tracking it, so a keyboard speed
        change (space / , / .) shows up here too. */
     _tickBar() {
@@ -112,6 +222,15 @@
       const sp = e ? e.speed : 1;
       this.speedBtn.textContent =
         sp === 0 ? ZS.i18n.t("battle.paused") : ZS.i18n.t("battle.speed", { n: sp });
+      const now = performance.now();
+      if (now >= this.infoNext) {
+        this.infoNext = now + 250;
+        this.updateBattleSelection(
+          ZS.Command ? ZS.Command.selection : [],
+          ZS.Command ? ZS.Command.scen : null,
+          false,
+        );
+      }
       requestAnimationFrame(() => this._tickBar());
     },
 

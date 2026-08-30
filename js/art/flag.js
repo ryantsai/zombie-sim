@@ -58,7 +58,7 @@
 
     // — the major families —
     liu: FACTIONS[2],
-    cao: FACTIONS[1],
+    cao: FACTIONS[0], // battle-simulator 曹 standard is blue
     sun: FACTIONS[0],
     yuan: FACTIONS[3],
     lv: FACTIONS[4],

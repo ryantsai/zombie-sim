@@ -59,7 +59,7 @@ design contract.
 
 | # | Task | Status | Files |
 |---|---|---|---|
-| 7.1 | The unit / figure system — stickman baseline + 9 unit types (槍 / 刀盾 / 弩 / 戟 / 騎 / 弓騎 / 投石車 / 衝車 / 旗手) + 4 rank tiers | ✅ | `js/figure/figure.js` |
+| 7.1 | The unit / figure system — stickman baseline + 12 unit types (槍 / 刀盾 / 弩 / 戟 / 騎 / 弓騎 / 投石車 / 衝車 / 旗手 / 虎豹騎 / 諸葛弩 / 象兵) + 4 rank tiers | ✅ | `js/figure/figure.js` |
 | 7.2 | The flag system — 7 shapes × 3 border styles × 3 text styles; **chrome and text are independent record fields, freely swappable** | ✅ | `js/art/flag.js` |
 | 7.3 | Flag preset catalogue — 94 entries covering the 3 kingdoms, 14 major families, 22 194 CE warlords, 34 major generals, 13 Han provinces, 5 imperial + rebellion banners | ✅ | `ZS.flag.PRESETS` |
 | 7.4 | Flag helpers — `plant()` for in-world markers, `bearer()` for STANDARD units, `forFaction()` for the campaign-pick panel | ✅ | `ZS.flag.{plant,bearer,forFaction}` |
@@ -67,10 +67,10 @@ design contract.
 | 7.6 | The portrait system — 23 named generals, headgear × beard × expression vocabulary | ✅ | `js/figure/portrait.js` |
 | 7.7 | The environment catalogue — trees, hills, rivers, camps, walls, gates, bridges, ruins, roads | ✅ | `js/art/environment.js` |
 | 7.8 | The UI art catalogue — banner, save-thumb, button glyphs, seal, tally, title banner | ✅ | `js/art/ui.js` |
-| 7.9 | SFX kit — 13 new battle events (sword clash, arrow fly, cavalry charge, drum roll, retreat horn, etc.) on top of the Outbreak's existing voice synth | ✅ | `js/sound.js` |
+| 7.9 | SFX kit — 16 battle events (sword clash, arrows, stone launch/impact, cavalry charge, drums, retreat horn, etc.) on top of the Outbreak's existing voice synth | ✅ | `js/sound.js` |
 | 7.10 | Music engine — procedural layered synth (pluck / bass / pad / drums) with `menu` / `battle` / `victory` / `defeat` / 8 `faction_sting_*` / `turn_change` tracks | ✅ | `js/music/music.js` |
 | 7.11 | One real menu track — a 22.6 s guzheng piece (Karplus-Strong synthesis), generated offline, base64-embedded as `js/music/menu-track-data.js` | ✅ | `tools/build-menu-track.py` + `menu-track-data.js` |
-| 7.12 | Font subset extension — `tools/extend-subset.py` patches the existing woff2 in place when new i18n glyphs are added (stopgap until a real source-face rebuild) | ✅ | `tools/extend-subset.py` |
+| 7.12 | Brush-kai subset rebuilt from the official source face; `subset-font.py --check` covers all current i18n text | ✅ | `tools/subset-font.py`, `fonts/` |
 
 The music wires into `ZS.App.go(state)` — each view declares its own
 soundtrack (`menu: 'menu'`, `battle: 'battle'`) and the shell handles
@@ -143,6 +143,7 @@ the rest. Settings.music flows into `music.setVolume` automatically.
 | 1.11 | Regression suite for the three original pages | ✅ | `.verify/pages-regression.js` |
 | 1.12 | Bug sweep: 12 fixed, each one now an assertion | ✅ | see below |
 | 1.13 | Seed sweep — no battle may hang | ✅ | `.verify/sanguo-seed-sweep.js` |
+| 1.14 | Pooled ranged projectiles + four impact paths; logical three-line deployment; special corps; faction armour; selected-unit status box | ✅ | `js/scenarios/sanguo.js`, `js/figure/figure.js`, `js/ui/menu.js` |
 
 ### What P1 proves
 

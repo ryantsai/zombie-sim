@@ -33,7 +33,10 @@
     // Heavy equipment / special — same body, weapon is the read
     CATAPULT = 6, // 投石車 — operated by a crew
     RAM = 7, // 衝車 — the siege ram
-    STANDARD = 8; // 旗手 — the standard bearer (any unit type)
+    STANDARD = 8, // 旗手 — the standard bearer (any unit type)
+    HUBAO = 9, // 虎豹騎 — armoured shock cavalry
+    ZHUGE = 10, // 諸葛弩 — repeating crossbow corps
+    ELEPHANT = 11; // 象兵 — towered war elephants
 
   /* Rank tiers — size plus marks, still one body (§7.4). */
   const TROOPER = 0,
@@ -45,9 +48,9 @@
   /* Faction ramp (§7.2). Assigned at campaign start; the player's faction
      always takes slot 0. Used as a low-alpha wash plus the ink line. */
   const FACTIONS = [
-    [70, 96, 150], // blue
+    [64, 132, 74], // player 劉 — green
+    [70, 96, 150], // computer 曹 — blue
     [150, 54, 44], // red
-    [64, 132, 74], // green
     [150, 120, 60], // ochre
     [120, 80, 140], // violet
     [60, 130, 130], // teal
@@ -74,6 +77,18 @@
     { x: 0, y: 0 },
     { x: 0, y: 0 },
   ];
+  const ARMOR_QUAD = [
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+  ];
+  const ELEPHANT_BODY = [
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+  ];
 
   function wash(i, alpha) {
     const c = FACTIONS[i % FACTIONS.length];
@@ -94,6 +109,10 @@
       drawRam(c, a);
       return;
     }
+    if (a.type === ELEPHANT) {
+      drawElephant(c, a, moving);
+      return;
+    }
     const s = a.seed;
     const k = TIER_SCALE[a.tier || 0];
     const g = Math.sin(a.gait) * 3 * k * Math.min(1, moving / 26 + 0.25);
@@ -112,6 +131,8 @@
     ZS.wline(c, a.x, a.y - 1, a.x - g + ZS.sjit(s + 2) * 0.5, a.y + 5.5 * k, s + 17, 1.1);
     // torso + head
     ZS.wline(c, hx, hy + 4 * k, a.x, a.y - 1, s + 23, 1);
+    drawFootArmor(c, a, hx, hy, k);
+    c.strokeStyle = INK;
     ZS.wcirc(c, hx, hy, 4.2 * k, s + 29, 0.8);
 
     // standard bearers replace the personal weapon with a tall pole + cloth
@@ -143,7 +164,11 @@
       drawRam(c, a);
       return;
     }
-    if (a.type === CAV || a.type === HBOW) {
+    if (a.type === ELEPHANT) {
+      drawMidElephant(c, a);
+      return;
+    }
+    if (a.type === CAV || a.type === HBOW || a.type === HUBAO) {
       drawMidRider(c, a);
       return;
     }
@@ -155,6 +180,8 @@
     c.lineWidth = 1.4;
     c.lineCap = "round";
     ZS.wline(c, hx, hy + 4 * k, a.x, a.y, s + 23, 0.8);
+    drawFootArmor(c, a, hx, hy, k);
+    c.strokeStyle = INK;
     ZS.wcirc(c, hx, hy, 4 * k, s + 29, 0.65);
     if (a.type === STANDARD && !a.flagDropped) drawStandard(c, a, hx, hy, k);
     else drawWeapon(c, a, hx, hy, k);
@@ -181,12 +208,15 @@
     const rx = bx - px;
     const ry = by - 8;
     ZS.wline(c, rx, ry, rx - px * 1.5, ry - 7, s + 31, 0.55);
+    drawRiderArmor(c, a, rx, ry, ca, sa, px, py, 0.9);
+    c.strokeStyle = INK;
     ZS.wcirc(c, rx - px * 1.5, ry - 10, 3, s + 33, 0.5);
     if (a.type === HBOW) {
       ZS.wcirc(c, rx + ca * 7, ry - 5 + sa * 4, 3.4, s + 36, 0.5);
       c.stroke();
     } else {
       ZS.wline(c, rx, ry - 5, rx + ca * 16, ry - 5 + sa * 9, s + 36, 0.6);
+      if (a.type === HUBAO) drawHubaoMarks(c, a, bx, by, ca, sa, px, py, true);
     }
   }
 
@@ -285,6 +315,69 @@
     p.y = u.cy - l * ch + f * sh;
   }
 
+  function drawFootArmor(c, a, hx, hy, k) {
+    setPoint(ARMOR_QUAD[0], hx - 3.4 * k, hy + 3.4 * k);
+    setPoint(ARMOR_QUAD[1], hx + 3.4 * k, hy + 3.4 * k);
+    setPoint(ARMOR_QUAD[2], a.x + 4.2 * k, a.y - 3 * k);
+    setPoint(ARMOR_QUAD[3], a.x - 4.2 * k, a.y - 3 * k);
+    c.fillStyle = wash(a.faction, a.type === HUBAO ? 0.5 : 0.34);
+    c.strokeStyle = INK_SOFT;
+    c.lineWidth = 0.9;
+    ZS.wpoly(c, ARMOR_QUAD, a.seed + 24, 0.55, true);
+    c.fill();
+    c.stroke();
+    if (a.type === ZHUGE) {
+      c.strokeStyle = wash(a.faction, 0.75);
+      ZS.wline(c, hx - 3 * k, hy + 6 * k, a.x + 3.2 * k, a.y - 4 * k, a.seed + 26, 0.4);
+    }
+  }
+
+  function drawRiderArmor(c, a, rx, ry, ca, sa, px, _py, k) {
+    const tx = rx - px * 1.5;
+    const ty = ry - 7;
+    setPoint(ARMOR_QUAD[0], rx - ca * 3.2 * k, ry - sa * 3.2 * k);
+    setPoint(ARMOR_QUAD[1], rx + ca * 3.2 * k, ry + sa * 3.2 * k);
+    setPoint(ARMOR_QUAD[2], tx + ca * 2.7 * k, ty + sa * 2.7 * k);
+    setPoint(ARMOR_QUAD[3], tx - ca * 2.7 * k, ty - sa * 2.7 * k);
+    c.fillStyle = wash(a.faction, a.type === HUBAO ? 0.58 : 0.38);
+    c.strokeStyle = INK_SOFT;
+    c.lineWidth = 0.9;
+    ZS.wpoly(c, ARMOR_QUAD, a.seed + 32, 0.45, true);
+    c.fill();
+    c.stroke();
+  }
+
+  function drawHubaoMarks(c, a, bx, by, ca, sa, px, py, mid) {
+    c.strokeStyle = "rgba(45,38,31,0.72)";
+    c.lineWidth = mid ? 0.9 : 1.15;
+    const n = mid ? 2 : 4;
+    for (let i = 0; i < n; i++) {
+      const along = -7 + i * 4.5;
+      ZS.wline(
+        c,
+        bx + ca * along - px * 3.3,
+        by + sa * along - py * 3.3,
+        bx + ca * (along + 2) + px * 3.3,
+        by + sa * (along + 2) + py * 3.3,
+        a.seed + 140 + i * 5,
+        0.45,
+      );
+    }
+    const helmX = bx - px * 1.5;
+    const helmY = by - 18;
+    c.strokeStyle = wash(a.faction, 0.9);
+    c.lineWidth = 1.6;
+    ZS.wline(
+      c,
+      helmX,
+      helmY,
+      helmX - ca * (mid ? 5 : 8) - px * 3,
+      helmY - sa * (mid ? 5 : 8) - py * 3,
+      a.seed + 166,
+      0.6,
+    );
+  }
+
   /* ---------- weapons: the type read (§7.3) ---------- */
 
   function drawWeapon(c, a, hx, hy, k) {
@@ -335,6 +428,50 @@
           0.6,
         );
         ZS.wline(c, hx, hy + 5 * k, shx, shy, s + 39, 0.8);
+        break;
+      }
+      case ZHUGE: {
+        // Repeating crossbow: box magazine over the stock and a pumping
+        // lever. `thr` snaps the whole mechanism back on every fast shot.
+        const kick = a.thr > 0 ? -2.4 * k : 0;
+        const px = -sa,
+          py = ca;
+        const bx = shx + ca * kick,
+          by = shy + sa * kick;
+        const tipX = bx + ca * 10 * k,
+          tipY = by + sa * 10 * k;
+        ZS.wline(c, bx - ca * 4 * k, by - sa * 4 * k, tipX, tipY, s + 31, 0.55);
+        ZS.wline(
+          c,
+          tipX - px * 4.2 * k,
+          tipY - py * 4.2 * k,
+          tipX + px * 4.2 * k,
+          tipY + py * 4.2 * k,
+          s + 33,
+          0.5,
+        );
+        const mx = bx + ca * 2 * k,
+          my = by + sa * 2 * k;
+        c.fillStyle = wash(a.faction, 0.48);
+        c.beginPath();
+        c.moveTo(mx - ca * 2.2 * k - px * 2.8 * k, my - sa * 2.2 * k - py * 2.8 * k);
+        c.lineTo(mx + ca * 2.2 * k - px * 2.8 * k, my + sa * 2.2 * k - py * 2.8 * k);
+        c.lineTo(mx + ca * 2.2 * k + px * 2.8 * k, my + sa * 2.2 * k + py * 2.8 * k);
+        c.lineTo(mx - ca * 2.2 * k + px * 2.8 * k, my - sa * 2.2 * k + py * 2.8 * k);
+        c.closePath();
+        c.fill();
+        c.stroke();
+        const lever = a.thr > 0 ? 6 : 3;
+        ZS.wline(
+          c,
+          bx,
+          by,
+          bx - ca * 2 * k + px * lever * k,
+          by - sa * 2 * k + py * lever * k,
+          s + 36,
+          0.5,
+        );
+        ZS.wline(c, hx, hy + 5 * k, bx, by, s + 39, 0.8);
         break;
       }
       case JI: {
@@ -408,6 +545,11 @@
     c.strokeStyle = INK;
     c.lineWidth = 1.5;
     ZS.wline(c, a.x - 14 * k, a.y + 4, a.x + 14 * k, a.y + 4, s + 1, 0.8);
+    c.strokeStyle = wash(a.faction, 0.82);
+    c.lineWidth = 3;
+    ZS.wline(c, a.x - 12 * k, a.y + 2.5, a.x + 12 * k, a.y + 2.5, s + 11, 0.55);
+    c.strokeStyle = INK;
+    c.lineWidth = 1.5;
     ZS.wline(c, a.x - 10 * k, a.y + 4, a.x - 10 * k, a.y + 8, s + 2, 0.5);
     ZS.wline(c, a.x + 10 * k, a.y + 4, a.x + 10 * k, a.y + 8, s + 3, 0.5);
     // wheels
@@ -447,6 +589,14 @@
       sa = Math.sin(a.a);
     c.strokeStyle = INK;
     c.lineWidth = 1.5;
+    setPoint(ARMOR_QUAD[0], a.x - 8 * k, a.y - 12 * k);
+    setPoint(ARMOR_QUAD[1], a.x + 6 * k, a.y - 12 * k);
+    setPoint(ARMOR_QUAD[2], a.x + 10 * k, a.y - 6);
+    setPoint(ARMOR_QUAD[3], a.x - 12 * k, a.y - 6);
+    c.fillStyle = wash(a.faction, 0.3);
+    ZS.wpoly(c, ARMOR_QUAD, s + 12, 0.65, true);
+    c.fill();
+    c.stroke();
     // the shed (a small rectangle)
     ZS.wline(c, a.x - 12 * k, a.y - 6, a.x + 10 * k, a.y - 6, s + 1, 0.6);
     ZS.wline(c, a.x - 12 * k, a.y - 6, a.x - 12 * k, a.y + 6, s + 2, 0.5);
@@ -519,9 +669,137 @@
     }
   }
 
+  /* War elephant — a broad grey body, faction-coloured armour blanket,
+     tusks, swinging trunk, and a small fighting platform. It deliberately
+     exceeds the ordinary 20 px silhouette: the size is the tactical read. */
+  function drawElephant(c, a, moving) {
+    const s = a.seed;
+    const ca = Math.cos(a.a),
+      sa = Math.sin(a.a);
+    const px = -sa,
+      py = ca;
+    const bx = a.x,
+      by = a.y - 10;
+    const gait = Math.sin(a.gait * 0.82) * 4 * Math.min(1, moving / 55 + 0.2);
+
+    c.strokeStyle = SHADOW;
+    c.lineWidth = 1.3;
+    ZS.wcirc(c, a.x, a.y + 4, 19, s + 3, 2.1);
+
+    setPoint(ELEPHANT_BODY[0], bx - ca * 15 - px * 8, by - sa * 15 - py * 8);
+    setPoint(ELEPHANT_BODY[1], bx - ca * 14 + px * 8, by - sa * 14 + py * 8);
+    setPoint(ELEPHANT_BODY[2], bx + ca * 14 + px * 8, by + sa * 14 + py * 8);
+    setPoint(ELEPHANT_BODY[3], bx + ca * 16 - px * 8, by + sa * 16 - py * 8);
+    c.fillStyle = "rgba(121,122,111,0.5)";
+    c.strokeStyle = INK;
+    c.lineWidth = 1.55;
+    ZS.wpoly(c, ELEPHANT_BODY, s + 5, 1.05, true);
+    c.fill();
+    c.stroke();
+
+    // Four massive legs alternate rather than using the horse's gallop.
+    for (let i = 0; i < 4; i++) {
+      const front = i < 2 ? 8 : -8;
+      const across = i % 2 ? 5 : -5;
+      const lx = bx + ca * front + px * across;
+      const ly = by + sa * front + py * across;
+      const step = (i % 2 ? -gait : gait) * 0.55;
+      ZS.wline(c, lx, ly + 4, lx + ca * step, a.y + 8 + (i % 2) * 1.5, s + 17 + i * 5, 0.9);
+    }
+
+    // Armoured blanket: the same exact colour ramp as the formation flag.
+    setPoint(ARMOR_QUAD[0], bx - ca * 10 - px * 7, by - sa * 10 - py * 7);
+    setPoint(ARMOR_QUAD[1], bx - ca * 10 + px * 7, by - sa * 10 + py * 7);
+    setPoint(ARMOR_QUAD[2], bx + ca * 7 + px * 7, by + sa * 7 + py * 7);
+    setPoint(ARMOR_QUAD[3], bx + ca * 7 - px * 7, by + sa * 7 - py * 7);
+    c.fillStyle = wash(a.faction, 0.48);
+    c.strokeStyle = INK_SOFT;
+    c.lineWidth = 1;
+    ZS.wpoly(c, ARMOR_QUAD, s + 41, 0.75, true);
+    c.fill();
+    c.stroke();
+
+    const hx = bx + ca * 18,
+      hy = by + sa * 18;
+    c.fillStyle = "rgba(121,122,111,0.55)";
+    c.strokeStyle = INK;
+    c.lineWidth = 1.4;
+    ZS.wcirc(c, hx, hy, 7.2, s + 49, 0.85);
+    c.fill();
+    // Ear, tusks, and a two-joint trunk with a slow independent sway.
+    ZS.wcirc(c, hx - ca * 3 + px * 5, hy - sa * 3 + py * 5, 4.8, s + 53, 0.7);
+    const swing = Math.sin(a.gait * 0.44 + s) * 4;
+    const tx = hx + ca * 7,
+      ty = hy + sa * 7 + 5;
+    ZS.wline(c, hx + ca * 4, hy + sa * 4, tx + px * swing * 0.3, ty, s + 57, 1);
+    ZS.wline(c, tx + px * swing * 0.3, ty, tx + px * swing, ty + 10, s + 61, 1);
+    c.strokeStyle = "rgba(224,213,181,0.9)";
+    c.lineWidth = 1.3;
+    ZS.wline(
+      c,
+      hx + px * 4,
+      hy + py * 4,
+      hx + ca * 10 + px * 3,
+      hy + sa * 10 + py * 3,
+      s + 65,
+      0.5,
+    );
+    ZS.wline(
+      c,
+      hx - px * 4,
+      hy - py * 4,
+      hx + ca * 10 - px * 3,
+      hy + sa * 10 - py * 3,
+      s + 69,
+      0.5,
+    );
+
+    // Howdah and armoured mahout.
+    c.strokeStyle = INK;
+    c.lineWidth = 1.2;
+    ZS.wline(c, bx - ca * 7, by - sa * 7 - 8, bx + ca * 7, by + sa * 7 - 8, s + 73, 0.6);
+    const rx = bx - px;
+    const ry = by - 11;
+    ZS.wline(c, rx, ry, rx - px, ry - 7, s + 77, 0.55);
+    drawRiderArmor(c, a, rx, ry, ca, sa, px, py, 1);
+    c.strokeStyle = INK;
+    ZS.wcirc(c, rx - px, ry - 10, 3.1, s + 81, 0.55);
+    const thrust = a.atk > 0 ? 6 : 0;
+    ZS.wline(c, rx, ry - 5, rx + ca * (16 + thrust), ry - 5 + sa * 9, s + 85, 0.7);
+  }
+
+  function drawMidElephant(c, a) {
+    const s = a.seed;
+    const ca = Math.cos(a.a),
+      sa = Math.sin(a.a);
+    const px = -sa,
+      py = ca;
+    const bx = a.x,
+      by = a.y - 9;
+    setPoint(ELEPHANT_BODY[0], bx - ca * 14 - px * 7, by - sa * 14 - py * 7);
+    setPoint(ELEPHANT_BODY[1], bx - ca * 13 + px * 7, by - sa * 13 + py * 7);
+    setPoint(ELEPHANT_BODY[2], bx + ca * 14 + px * 7, by + sa * 14 + py * 7);
+    setPoint(ELEPHANT_BODY[3], bx + ca * 15 - px * 7, by + sa * 15 - py * 7);
+    c.fillStyle = wash(a.faction, 0.34);
+    c.strokeStyle = INK;
+    c.lineWidth = 1.3;
+    ZS.wpoly(c, ELEPHANT_BODY, s + 5, 0.8, true);
+    c.fill();
+    c.stroke();
+    const hx = bx + ca * 18,
+      hy = by + sa * 18;
+    ZS.wcirc(c, hx, hy, 6.5, s + 49, 0.65);
+    ZS.wline(c, hx + ca * 4, hy + sa * 4, hx + ca * 9, hy + sa * 9 + 11, s + 57, 0.7);
+    ZS.wline(c, bx - ca * 7, by - sa * 7 - 8, bx + ca * 7, by + sa * 7 - 8, s + 73, 0.5);
+  }
+
   /* ---------- the mounted variant (§7.3) ---------- */
 
   function drawRider(c, a, moving) {
+    if (a.type === ELEPHANT) {
+      drawElephant(c, a, moving);
+      return;
+    }
     const s = a.seed;
     const g = Math.sin(a.gait * 1.4) * 4 * Math.min(1, moving / 90 + 0.3);
     const ca = Math.cos(a.a),
@@ -537,6 +815,7 @@
     const bx = a.x,
       by = a.y - 6;
     // horse body
+    c.fillStyle = wash(a.faction, a.type === HUBAO ? 0.3 : 0.18);
     ZS.wpoly(
       c,
       [
@@ -549,6 +828,7 @@
       0.8,
       true,
     );
+    c.fill();
     c.stroke();
     // neck, head
     const nx = bx + ca * 12,
@@ -611,6 +891,8 @@
       ry = by - 8;
     c.lineWidth = 1.3;
     ZS.wline(c, rx, ry, rx - px * 1.5, ry - 7, s + 31, 0.6);
+    drawRiderArmor(c, a, rx, ry, ca, sa, px, py, 1);
+    c.strokeStyle = INK;
     ZS.wcirc(c, rx - px * 1.5, ry - 10, 3, s + 33, 0.6);
     if (a.type === HBOW) {
       // bow held across: two short arms and a curve
@@ -628,6 +910,7 @@
       c.fill();
       c.stroke();
     }
+    if (a.type === HUBAO) drawHubaoMarks(c, a, bx, by, ca, sa, px, py, false);
   }
 
   /* ---------- rank marks, sash, banner, aura (§7.4) ---------- */
@@ -752,6 +1035,9 @@
     CATAPULT,
     RAM,
     STANDARD,
+    HUBAO,
+    ZHUGE,
+    ELEPHANT,
     TROOPER,
     NCO,
     OFFICER,
@@ -770,5 +1056,6 @@
     drawCatapult,
     drawRam,
     drawStandard,
+    drawElephant,
   };
 })();

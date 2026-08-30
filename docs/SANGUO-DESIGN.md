@@ -551,7 +551,7 @@ slot). Used for the sash `wline`, the name banner cloth, and the map province
 fill (all as a low-alpha wash + ink outline):
 
 ```
-blue rgba(70,96,150) · green rgba(64,132,74) · red rgba(150,54,44) ·
+green rgba(64,132,74) · blue rgba(70,96,150) · red rgba(150,54,44) ·
 ochre rgba(150,120,60) · violet rgba(120,80,140) · teal rgba(60,130,130) ·
 brown rgba(120,86,60) · slate rgba(96,104,120)
 ```
@@ -560,16 +560,26 @@ Ground/terrain washes stay in the existing register (water/grass/tree/tan).
 
 ### 7.3 Unit types — silhouette is the read
 
-Same body; the **weapon and stance** carry the type. No new body art.
+The human baseline stays shared; the **weapon, armour, and stance** carry the
+type. Siege equipment and war elephants are footprint-scale exceptions built
+from the same sketch primitives.
 
 | Type | zh-tw | Weapon draw | Stance tweak |
 |---|---|---|---|
 | 槍兵 spear | 槍兵 | long `wline`, ~14 px, angled up when idle | tight rank spacing (`sepR` low) |
 | 刀盾 dao+shield | 刀盾兵 | short `wline` blade + `wcirc`/`wpoly` shield on off-arm (reuse `_shield`) | — |
-| 弩兵 crossbow | 弩兵 | short horizontal `wline` + tick; a tracer `fx` on shot | halts to fire |
+| 弩兵 crossbow | 弩兵 | short horizontal `wline` + tick; a physical bolt on shot | halts to fire |
 | 戟兵 halberd | 戟兵 | `wline` + a small cross `wline` near the tip | anti-cav bonus |
 | 騎兵 cavalry | 騎兵 | rider body on a horse (reuse Cannae `_drawCav`) + lance | fast, wedge default |
 | 弓騎 horse archer | 弓騎兵 | cav body + bow tick | kite |
+| 虎豹騎 elite cavalry | 虎豹騎 | striped armoured horse + plume + lance | fastest shock wedge |
+| 諸葛弩 repeater | 諸葛弩 | box-magazine crossbow + pumping lever | rapid projectile fire |
+| 象兵 war elephant | 象兵 | elephant + coloured blanket + howdah + tusks/trunk | slow heavy breakthrough |
+
+All ranged attacks use pooled world-space projectiles. Bolts, arrows, and
+repeater bolts collide along their travelled segment; catapult stones follow
+a visible arc and resolve a 54 px area impact. Projectile presentation uses a
+separate hash/sequence and never consumes the battle RNG merely to draw a shot.
 
 ### 7.4 Rank tiers — size + marks, still one body
 

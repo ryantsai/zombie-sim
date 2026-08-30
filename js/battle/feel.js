@@ -28,6 +28,10 @@
       this._burst(x, y, dx, dy, 1);
     }
 
+    projectileImpact(power) {
+      this.trauma = Math.min(1, this.trauma + (power || 0.08));
+    }
+
     generalKill(victim, killer) {
       let dx = Math.cos(victim.a);
       let dy = Math.sin(victim.a);

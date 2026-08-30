@@ -26,22 +26,25 @@
     line(n, o) {
       const ranks = Math.max(1, o.ranks || 4);
       const cols = Math.max(1, Math.ceil(n / ranks));
-      return grid(n, cols, SP, SP, 0);
+      const spacing = o.spacing || SP;
+      return grid(n, cols, spacing, spacing, 0);
     },
     /* Narrow and deep: marches through gaps, weak frontage. */
     column(n, o) {
       const cols = Math.max(1, o.cols || 6);
-      return grid(n, cols, SP, SP, 0);
+      const spacing = o.spacing || SP;
+      return grid(n, cols, spacing, spacing, 0);
     },
     /* A blunt arrowhead: fewer men in front, mass behind. Cavalry default. */
-    wedge(n) {
+    wedge(n, o) {
       const out = [];
+      const spacing = o.spacing || SP;
       let row = 0,
         placed = 0;
       while (placed < n) {
         const wide = row + 1;
         for (let i = 0; i < wide && placed < n; i++, placed++) {
-          out.push({ x: (i - (wide - 1) / 2) * SP, y: -row * SP * 0.86 });
+          out.push({ x: (i - (wide - 1) / 2) * spacing, y: -row * spacing * 0.86 });
         }
         row++;
       }

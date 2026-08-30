@@ -36,6 +36,9 @@
     order_fail: 0.22,
     duel_intro: 0.5,
     crossbow_thrum: 0.14,
+    stone_launch: 0.32,
+    stone_impact: 0.18,
+    missile_impact: 0.06,
     banner_wave: 0.8,
     blade_sheath: 0.25,
     // the formant voice lines
@@ -1004,6 +1007,25 @@
         // the heavy twang + the bolt's gone — a release thump
         voice({ f: 180, f2: 75, t: 0.18, g: 0.45 * B, type: "triangle" });
         voice({ n: 1, cut: 1200, t: 0.05, g: 0.18 * B });
+        break;
+      }
+      case "stone_launch": {
+        // Rope strain, arm release, then the wagon's low wooden complaint.
+        voice({ f: 145, f2: 62, t: 0.24, g: 0.38 * B, type: "triangle" });
+        voice({ n: 1, cut: 720, bt: "bandpass", q: 1.2, t: 0.12, g: 0.2 * B });
+        break;
+      }
+      case "stone_impact": {
+        // Packed-earth thump with a short debris spray.
+        voice({ f: 72, f2: 34, t: 0.38, g: 0.72 * B, type: "sine" });
+        voice({ n: 1, cut: 540, t: 0.24, g: 0.5 * B });
+        voice({ n: 1, cut: 2100, bt: "highpass", t: 0.07, g: 0.16 * B });
+        break;
+      }
+      case "missile_impact": {
+        // A dry shaft/armour tick, kept tiny beneath massed volleys.
+        voice({ n: 1, cut: 2600, bt: "bandpass", q: 1.8, t: 0.045, g: 0.22 * B });
+        voice({ f: 210, f2: 95, t: 0.07, g: 0.15 * B, type: "triangle" });
         break;
       }
       case "banner_wave": {

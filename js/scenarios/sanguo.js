@@ -42,25 +42,36 @@
 
   /* ---------- per-type tuning ---------- */
   /* index = ZS.figure type: SPEAR, DAO, BOW, JI, CAV, HBOW,
-     CATAPULT, RAM, STANDARD */
+     CATAPULT, RAM, STANDARD, HUBAO, ZHUGE, ELEPHANT */
 
   /* Hit points are the main pacing lever. Cannae's numbers (3-4) resolve a
      781-man battle by annihilation in 60-100 s; this pack ends on the rout
      instead, which arrives sooner, so men take a little more killing to land
      inside the design's 60-180 s window (§1). */
-  const HP = [5, 6, 3, 5, 7, 4, 12, 16, 8];
-  const REACH = [21, 17, 16, 24, 20, 16, 12, 27, 18]; // melee reach; 戟 outranges 槍 outranges 刀
-  const ATK_CD = [0.8, 0.62, 0, 0.9, 0.5, 0, 0, 1.15, 0.85];
-  const DMG = [1, 1, 1, 1, 2, 1, 3, 3, 1];
-  const SPD = [64, 70, 72, 60, 132, 140, 34, 42, 62]; // walking cap
-  const CHARGE_SPD = [96, 104, 0, 92, 180, 150, 0, 58, 86];
-  const FLEE_SPD = [116, 120, 124, 112, 152, 156, 58, 64, 108];
+  const HP = [5, 6, 3, 5, 7, 4, 12, 16, 8, 10, 4, 18];
+  const REACH = [21, 17, 16, 24, 20, 16, 12, 27, 18, 23, 16, 31]; // 戟 / 象 outrange the line
+  const ATK_CD = [0.8, 0.62, 0, 0.9, 0.5, 0, 0, 1.15, 0.85, 0.46, 0, 1.05];
+  const DMG = [1, 1, 1, 1, 2, 1, 3, 3, 1, 3, 1, 4];
+  const SPD = [64, 70, 72, 60, 132, 140, 34, 42, 62, 125, 68, 54]; // walking cap
+  const CHARGE_SPD = [96, 104, 0, 92, 180, 150, 0, 58, 86, 205, 0, 92];
+  const FLEE_SPD = [116, 120, 124, 112, 152, 156, 58, 64, 108, 160, 118, 66];
   const SEP_SLOT = 58; // how hard a man seeks his slot when not fighting
 
-  /* 弩兵 / 弓騎兵: ranged */
-  const SHOOT_R = [0, 0, 230, 0, 0, 170, 360, 0, 0];
-  const SHOOT_CD = [0, 0, 2.1, 0, 0, 1.8, 4.2, 0, 0];
-  const SHOOT_MIN = [0, 0, 60, 0, 0, 55, 120, 0, 0]; // back off inside this
+  /* 弩兵 / 弓騎兵 / 投石車 / 諸葛弩: ranged */
+  const SHOOT_R = [0, 0, 230, 0, 0, 190, 360, 0, 0, 0, 195, 0];
+  const SHOOT_CD = [0, 0, 2.1, 0, 0, 1.8, 4.2, 0, 0, 0, 0.68, 0];
+  const SHOOT_MIN = [0, 0, 60, 0, 0, 55, 120, 0, 0, 0, 48, 0]; // back off inside this
+
+  const PROJ_NONE = 0,
+    PROJ_BOLT = 1,
+    PROJ_ARROW = 2,
+    PROJ_STONE = 3,
+    PROJ_REPEAT = 4;
+  const PROJECTILE_KIND = [0, 0, PROJ_BOLT, 0, 0, PROJ_ARROW, PROJ_STONE, 0, 0, 0, PROJ_REPEAT, 0];
+  const PROJECTILE_SPEED = [0, 0, 520, 0, 0, 390, 235, 0, 0, 0, 680, 0];
+  const PROJECTILE_CAP = 2048;
+  const PROJECTILE_HIT_R = 13;
+  const CATAPULT_SPLASH_R = 54;
 
   /* 槍 beats 騎: a spear wall doubles damage against a mounted charge. */
   const ANTI_CAV = [2, 1, 1, 2.2, 1, 1];
@@ -80,20 +91,39 @@
      RNG, so chatter cannot alter a deterministic replay. */
   const BARK_MAX = 12;
 
+  const TYPE_KEYS = [
+    "spear",
+    "dao",
+    "crossbow",
+    "halberd",
+    "cav",
+    "hbow",
+    "catapult",
+    "ram",
+    "standard",
+    "hubao",
+    "zhuge",
+    "elephant",
+  ];
+
   const TG = { x: 0, y: 0 }; // scratch: no per-frame allocation
   const FLOW = { x: 0, y: 0 };
 
+  function isMounted(type) {
+    return type === F().CAV || type === F().HBOW || type === F().HUBAO || type === F().ELEPHANT;
+  }
+
   /* A default skirmish, used when nothing hands us a BattleSetup (§4.3). */
   function defaultSetup(seed) {
-    const comp = {
-      spear: 0.27,
-      dao: 0.17,
-      crossbow: 0.15,
-      halberd: 0.15,
-      cav: 0.1,
-      hbow: 0.08,
+    const common = {
+      spear: 0.24,
+      dao: 0.15,
+      crossbow: 0.12,
+      halberd: 0.14,
+      cav: 0.09,
+      hbow: 0.07,
       catapult: 0.03,
-      ram: 0.03,
+      ram: 0.02,
       standard: 0.02,
     };
     return {
@@ -102,7 +132,7 @@
       sides: [
         {
           factionId: 0,
-          comp,
+          comp: { ...common, zhuge: 0.09, elephant: 0.03 },
           onField: 1000,
           reserve: 0,
           generals: [
@@ -118,7 +148,7 @@
         },
         {
           factionId: 1,
-          comp,
+          comp: { ...common, hubao: 0.09, elephant: 0.03 },
           onField: 1000,
           reserve: 0,
           generals: [
@@ -168,6 +198,41 @@
       this.barkT = 0.8;
       this.barkSeq = 0;
       this.fallenFlags = [];
+      this.projectiles = [];
+      for (let i = 0; i < PROJECTILE_CAP; i++) {
+        this.projectiles.push({
+          active: false,
+          kind: PROJ_NONE,
+          side: 0,
+          x0: 0,
+          y0: 0,
+          x1: 0,
+          y1: 0,
+          px: 0,
+          py: 0,
+          x: 0,
+          y: 0,
+          age: 0,
+          dur: 1,
+          arc: 0,
+          seed: 0,
+          damage: 0,
+          owner: null,
+          target: null,
+        });
+      }
+      this.projectileCursor = 0;
+      this.projectileActive = 0;
+      this.projectileSeq = 0;
+      this.projectileLaunched = [0, 0, 0, 0, 0];
+      this.projectileImpacts = [0, 0, 0, 0, 0];
+      this.projectileHits = [0, 0, 0, 0, 0];
+      this._projectileProbe = null;
+      this._projectileCandidate = null;
+      this._projectileBest = Infinity;
+      this._splashProjectile = null;
+      this._probeProjectileBound = (a) => this._probeProjectileAgent(a);
+      this._splashProjectileBound = (a) => this._splashProjectileAgent(a);
     }
 
     /* ---------- deterministic randomness (§3.6) ---------- */
@@ -511,6 +576,7 @@
       if (this.t0 === null) this.t0 = t;
       this.bt = t - this.t0;
       this.talkingNow = 0;
+      this._updateProjectiles(dt, grid);
 
       // routed men who leave the field are gone for good
       for (let i = 0; i < agents.length; i++) {
@@ -884,7 +950,7 @@
         this._seekSlot(a, u, dt, 40, true);
         return;
       }
-      if (a.type === F().CAV || a.type === F().HBOW) this._updateRider(a, dt, t, grid, nav, u);
+      if (isMounted(a.type)) this._updateRider(a, dt, t, grid, nav, u);
       else if (SHOOT_R[a.type] > 0) this._updateShooter(a, dt, grid, u);
       else this._updateFoot(a, dt, t, grid, nav, u);
     }
@@ -1045,16 +1111,7 @@
           a.thrCd = SHOOT_CD[a.type] * (0.85 + ZS.hash(a.seed) * 0.3);
           a.thr = 0.22;
           a.a = Math.atan2(be.y - a.y, be.x - a.x);
-          this.fx.push({
-            x0: a.x + Math.cos(a.a) * 10,
-            y0: a.y - 8,
-            x1: be.x,
-            y1: be.y - 4,
-            t: 0.22,
-            bolt: true,
-            seed: this.rnd(0, 997),
-          });
-          this._hit(a, be, DMG[a.type]);
+          this._fireProjectile(a, be);
         }
         this._seekSlot(a, u, dt, 40, true);
       } else if (be) {
@@ -1070,16 +1127,7 @@
         } else if (a.thrCd <= 0) {
           a.thrCd = SHOOT_CD[a.type] * (0.85 + ZS.hash(a.seed) * 0.3);
           a.thr = 0.22;
-          this.fx.push({
-            x0: a.x + Math.cos(a.a) * 10,
-            y0: a.y - 8,
-            x1: be.x,
-            y1: be.y - 4,
-            t: 0.22,
-            bolt: true,
-            seed: this.rnd(0, 997),
-          });
-          this._hit(a, be, DMG[a.type]);
+          this._fireProjectile(a, be);
         } else {
           this._seekSlot(a, u, dt, 30, true);
         }
@@ -1093,7 +1141,7 @@
       if (u.st !== CHARGE) {
         /* Not charging: a horse archer kites, everyone else fights and forms
            up by the same rules as the infantry (which is what keeps a halted
-           squadron from standing idle while men die next to it). */
+           squadron or elephant corps from standing idle under pressure). */
         if (SHOOT_R[a.type] > 0) this._updateShooter(a, dt, grid, u);
         else this._updateFoot(a, dt, t, grid, nav, u);
         return;
@@ -1124,18 +1172,196 @@
             a.hitCd = 0.4;
             if (!be.fleeing) u.contact = 0.6;
             this._hit(a, be, DMG[a.type]);
-            be.vx += Math.cos(u.head) * 130;
-            be.vy += Math.sin(u.head) * 130;
+            const knock = a.type === F().ELEPHANT ? 235 : a.type === F().HUBAO ? 170 : 130;
+            be.vx += Math.cos(u.head) * knock;
+            be.vy += Math.sin(u.head) * knock;
           }
         }
       }
     }
 
+    /* ---------- projectiles ---------- */
+
+    _fireProjectile(a, target) {
+      const kind = PROJECTILE_KIND[a.type] || PROJ_NONE;
+      if (!kind || !target || target.dead) return false;
+      let p = null;
+      let at = -1;
+      for (let i = 0; i < PROJECTILE_CAP; i++) {
+        const k = (this.projectileCursor + i) % PROJECTILE_CAP;
+        if (!this.projectiles[k].active) {
+          p = this.projectiles[k];
+          at = k;
+          break;
+        }
+      }
+      if (!p) return false;
+
+      const dx = target.x - a.x;
+      const dy = target.y - a.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const ca = dx / d;
+      const sa = dy / d;
+      const speed = PROJECTILE_SPEED[a.type] || 420;
+      const minTime = kind === PROJ_STONE ? 0.5 : 0.12;
+      const maxTime = kind === PROJ_STONE ? 1.7 : 0.9;
+      const dur = ZS.clamp(d / speed, minTime, maxTime);
+      const lead = kind === PROJ_STONE ? 0.32 : 0.58;
+      p.active = true;
+      p.kind = kind;
+      p.side = a.side;
+      p.x0 = a.x + ca * (kind === PROJ_STONE ? 8 : 12);
+      p.y0 = a.y + sa * (kind === PROJ_STONE ? 8 : 12);
+      p.x1 = ZS.clamp(target.x + target.vx * dur * lead, 12, this.w - 12);
+      p.y1 = ZS.clamp(target.y + target.vy * dur * lead, 12, this.h - 12);
+      p.px = p.x0;
+      p.py = p.y0;
+      p.x = p.x0;
+      p.y = p.y0;
+      p.age = 0;
+      p.dur = dur;
+      p.arc =
+        kind === PROJ_STONE
+          ? 58 + d * 0.18
+          : kind === PROJ_ARROW
+            ? 14 + d * 0.025
+            : kind === PROJ_REPEAT
+              ? 2
+              : 5;
+      p.seed = ZS.hash(a.seed * 17.3 + ++this.projectileSeq * 29.1) * 997;
+      p.damage = DMG[a.type];
+      p.owner = a;
+      p.target = target;
+      this.projectileCursor = (at + 1) % PROJECTILE_CAP;
+      this.projectileActive++;
+      this.projectileLaunched[kind]++;
+
+      if (ZS.sound) {
+        ZS.sound.event(
+          kind === PROJ_ARROW
+            ? "arrow_fly"
+            : kind === PROJ_STONE
+              ? "stone_launch"
+              : "crossbow_thrum",
+          a.x,
+          a.y,
+        );
+      }
+      return true;
+    }
+
+    _updateProjectiles(dt, grid) {
+      if (!this.projectileActive) return;
+      for (let i = 0; i < PROJECTILE_CAP; i++) {
+        const p = this.projectiles[i];
+        if (!p.active) continue;
+        p.px = p.x;
+        p.py = p.y;
+        p.age += dt;
+        const q = Math.min(1, p.age / p.dur);
+        p.x = p.x0 + (p.x1 - p.x0) * q;
+        p.y = p.y0 + (p.y1 - p.y0) * q;
+
+        if (p.kind !== PROJ_STONE && q > 0.04) {
+          this._projectileProbe = p;
+          this._projectileCandidate = null;
+          this._projectileBest = Infinity;
+          const mx = (p.px + p.x) * 0.5;
+          const my = (p.py + p.y) * 0.5;
+          const r = Math.hypot(p.x - p.px, p.y - p.py) * 0.5 + PROJECTILE_HIT_R;
+          grid.query(mx, my, r, this._probeProjectileBound);
+          if (this._projectileCandidate) {
+            this._impactProjectile(p, this._projectileCandidate, grid);
+            continue;
+          }
+        }
+        if (q >= 1) this._impactProjectile(p, null, grid);
+      }
+      this._projectileProbe = null;
+    }
+
+    _probeProjectileAgent(a) {
+      const p = this._projectileProbe;
+      if (!p || a.side === p.side || a.dead || a.gone) return;
+      const vx = p.x - p.px;
+      const vy = p.y - p.py;
+      const len2 = vx * vx + vy * vy;
+      let q = len2 > 0 ? ((a.x - p.px) * vx + (a.y - p.py) * vy) / len2 : 0;
+      q = ZS.clamp(q, 0, 1);
+      const dx = a.x - (p.px + vx * q);
+      const dy = a.y - (p.py + vy * q);
+      const d2 = dx * dx + dy * dy;
+      if (d2 <= PROJECTILE_HIT_R * PROJECTILE_HIT_R && d2 < this._projectileBest) {
+        this._projectileBest = d2;
+        this._projectileCandidate = a;
+      }
+    }
+
+    _impactProjectile(p, target, grid) {
+      p.active = false;
+      this.projectileActive--;
+      this.projectileImpacts[p.kind]++;
+      const vx = p.x - p.px;
+      const vy = p.y - p.py;
+      const vd = Math.hypot(vx, vy) || 1;
+      const dx = vx / vd;
+      const dy = vy / vd;
+      if (p.kind === PROJ_STONE) {
+        this._splashProjectile = p;
+        grid.query(p.x, p.y, CATAPULT_SPLASH_R, this._splashProjectileBound);
+        this._splashProjectile = null;
+        this.fx.push({
+          x: p.x,
+          y: p.y,
+          t: 0.72,
+          stoneImpact: true,
+          r: CATAPULT_SPLASH_R,
+          seed: p.seed,
+        });
+        if (this.feel) this.feel.projectileImpact(0.18);
+        if (ZS.sound) ZS.sound.event("stone_impact", p.x, p.y);
+        return;
+      }
+
+      const x = target ? target.x : p.x;
+      const y = target ? target.y : p.y;
+      if (target) {
+        this.projectileHits[p.kind]++;
+        this._hit(p.owner, target, p.damage, true);
+        if (ZS.sound) ZS.sound.event("missile_impact", x, y);
+      }
+      this.fx.push({
+        x,
+        y,
+        dx,
+        dy,
+        t: target ? 0.34 : 0.24,
+        projectileImpact: p.kind,
+        hit: !!target,
+        seed: p.seed,
+      });
+    }
+
+    _splashProjectileAgent(a) {
+      const p = this._splashProjectile;
+      if (!p || a.side === p.side || a.dead || a.gone) return;
+      const d = Math.hypot(a.x - p.x, a.y - p.y);
+      if (d > CATAPULT_SPLASH_R) return;
+      const damage = Math.max(1, Math.round(p.damage * (1 - (d / CATAPULT_SPLASH_R) * 0.72)));
+      this.projectileHits[p.kind]++;
+      this._hit(p.owner, a, damage, true);
+      const push = (1 - d / CATAPULT_SPLASH_R) * 95;
+      const nx = d > 0 ? (a.x - p.x) / d : ZS.hash(a.seed + p.seed) * 2 - 1;
+      const ny = d > 0 ? (a.y - p.y) / d : ZS.hash(a.seed + p.seed + 7) * 2 - 1;
+      a.vx += nx * push;
+      a.vy += ny * push;
+    }
+
     /* ---------- combat ---------- */
 
-    _hit(a, be, dmg) {
+    _hit(a, be, dmg, ranged) {
       const unit = this.units[a.un];
-      if (unit && unit.st === CHARGE && !unit.chargeHit && this.feel) {
+      if (!ranged && unit && unit.st === CHARGE && !unit.chargeHit && this.feel) {
         unit.chargeHit = true;
         this.feel.charge(
           (a.x + be.x) * 0.5,
@@ -1147,22 +1373,21 @@
       let d = dmg;
       if (be.fleeing) d += 1; // a spear in the back of a running man
       // a braced spear wall against a horse
-      if (
-        (a.type === F().SPEAR || a.type === F().JI) &&
-        (be.type === F().CAV || be.type === F().HBOW)
-      ) {
+      if ((a.type === F().SPEAR || a.type === F().JI) && isMounted(be.type)) {
         d *= ANTI_CAV[a.type];
       }
       be.hp -= d;
       be.flash = 0.3;
       if (this.morale) this.morale.hit(be, a, d);
-      this.fx.push({
-        x: (a.x + be.x) / 2,
-        y: (a.y + be.y) / 2,
-        t: 0.22,
-        clash: true,
-        seed: this.rnd(0, 997),
-      });
+      if (!ranged) {
+        this.fx.push({
+          x: (a.x + be.x) / 2,
+          y: (a.y + be.y) / 2,
+          t: 0.22,
+          clash: true,
+          seed: this.rnd(0, 997),
+        });
+      }
       if (this.rnd() < 0.5) {
         this.fx.push({ x: be.x, y: be.y - 4, t: 0.4, blood: 2, seed: this.rnd(0, 997) });
         if (this.stains && this.rnd() < 0.5) this.stains.splat(be.x, be.y, "cut", this.rnd(0, 997));
@@ -1334,6 +1559,9 @@
         catapult: F().CATAPULT,
         ram: F().RAM,
         standard: F().STANDARD,
+        hubao: F().HUBAO,
+        zhuge: F().ZHUGE,
+        elephant: F().ELEPHANT,
       };
       for (let i = 0; i < specs.length; i++) {
         const spec = specs[i] || {};
@@ -1398,6 +1626,9 @@
         ["catapult", F().CATAPULT, 2],
         ["ram", F().RAM, 2],
         ["standard", F().STANDARD, 2],
+        ["hubao", F().HUBAO, 3],
+        ["zhuge", F().ZHUGE, 4],
+        ["elephant", F().ELEPHANT, 3],
       ];
       /* Ratios -> whole men by largest remainder, normalised first so a comp
          that does not sum to 1 still fields exactly `onField` soldiers. */
@@ -1410,8 +1641,9 @@
       const rem = want.map((v, i) => ({ i, r: v - men[i] })).sort((a, b) => b.r - a.r);
       for (let i = 0; left > 0; i = (i + 1) % rem.length, left--) men[rem[i].i]++;
 
-      /* Blocks laid across the front: infantry in the centre, crossbows a step
-         behind, horse on the wings. */
+      /* A three-line deployment: assault equipment and polearms in front,
+         swords and standards in support, missiles behind. Horse holds the
+         open flanks; special corps keep their own readable lane. */
       const ch = Math.cos(head),
         sh = Math.sin(head);
       const place = (across, back) => ({
@@ -1422,7 +1654,7 @@
       /* Keep a thousand-man army readable: add depth as blocks grow instead
          of letting a four-rank unit stretch hundreds of pixels sideways into
          its neighbours. Deployment runs once, so this helper is cold-path. */
-      const ranksFor = (count, minimum) => Math.max(minimum, Math.ceil(count / 16));
+      const ranksFor = (count, minimum) => Math.max(minimum, Math.ceil(count / 18));
       const spear = men[0],
         dao = men[1],
         bow = men[2],
@@ -1431,10 +1663,13 @@
         hbow = men[5],
         catapult = men[6],
         ram = men[7],
-        standard = men[8];
+        standard = men[8],
+        hubao = men[9],
+        zhuge = men[10],
+        elephant = men[11];
       if (spear > 0) {
         const half = Math.ceil(spear / 2);
-        const p1 = place(-span * 0.22, 0);
+        const p1 = place(-span * 0.3, 135);
         built.push(
           this._addUnit(agents, {
             side,
@@ -1449,7 +1684,7 @@
           }),
         );
         if (spear - half > 0) {
-          const p2 = place(span * 0.22, 0);
+          const p2 = place(span * 0.3, 135);
           built.push(
             this._addUnit(agents, {
               side,
@@ -1466,7 +1701,7 @@
         }
       }
       if (dao > 0) {
-        const p = place(0, -30);
+        const p = place(0, 10);
         built.push(
           this._addUnit(agents, {
             side,
@@ -1482,7 +1717,7 @@
         );
       }
       if (bow > 0) {
-        const p = place(0, -110);
+        const p = place(zhuge > 0 ? -span * 0.2 : 0, -165);
         built.push(
           this._addUnit(agents, {
             side,
@@ -1498,7 +1733,7 @@
         );
       }
       if (ji > 0) {
-        const p = place(0, 55);
+        const p = place(0, 150);
         built.push(
           this._addUnit(agents, {
             side,
@@ -1515,7 +1750,7 @@
       }
       if (cav > 0) {
         const half = Math.ceil(cav / 2);
-        const p1 = place(-span * 0.62, -40);
+        const p1 = place(-span * 0.74, 35);
         built.push(
           this._addUnit(agents, {
             side,
@@ -1529,7 +1764,7 @@
           }),
         );
         if (cav - half > 0) {
-          const p2 = place(span * 0.62, -40);
+          const p2 = place(span * 0.74, 35);
           built.push(
             this._addUnit(agents, {
               side,
@@ -1545,7 +1780,7 @@
         }
       }
       if (hbow > 0) {
-        const p = place(span * 0.82, -105);
+        const p = place(span * 0.9, -145);
         built.push(
           this._addUnit(agents, {
             side,
@@ -1560,7 +1795,7 @@
         );
       }
       if (catapult > 0) {
-        const p = place(-span * 0.3, -180);
+        const p = place(-span * 0.24, -330);
         built.push(
           this._addUnit(agents, {
             side,
@@ -1571,12 +1806,12 @@
             y: p.y,
             head,
             form: "line",
-            formOpts: { ranks: 2, spacing: 34 },
+            formOpts: { ranks: 3, spacing: 30 },
           }),
         );
       }
       if (ram > 0) {
-        const p = place(span * 0.3, 95);
+        const p = place(0, 265);
         built.push(
           this._addUnit(agents, {
             side,
@@ -1587,12 +1822,12 @@
             y: p.y,
             head,
             form: "column",
-            formOpts: { ranks: 2, spacing: 34 },
+            formOpts: { cols: 4, spacing: 28 },
           }),
         );
       }
       if (standard > 0) {
-        const p = place(0, -70);
+        const p = place(0, -75);
         built.push(
           this._addUnit(agents, {
             side,
@@ -1604,6 +1839,54 @@
             head,
             form: "column",
             formOpts: { ranks: 2 },
+          }),
+        );
+      }
+      if (hubao > 0) {
+        const p = place(-span * 0.9, -105);
+        built.push(
+          this._addUnit(agents, {
+            side,
+            faction: spec.factionId,
+            type: F().HUBAO,
+            n: hubao,
+            x: p.x,
+            y: p.y,
+            head,
+            form: "wedge",
+            formOpts: { spacing: 16 },
+          }),
+        );
+      }
+      if (zhuge > 0) {
+        const p = place(span * 0.18, -175);
+        built.push(
+          this._addUnit(agents, {
+            side,
+            faction: spec.factionId,
+            type: F().ZHUGE,
+            n: zhuge,
+            x: p.x,
+            y: p.y,
+            head,
+            form: "line",
+            formOpts: { ranks: ranksFor(zhuge, 4) },
+          }),
+        );
+      }
+      if (elephant > 0) {
+        const p = place(span * 0.55, 260);
+        built.push(
+          this._addUnit(agents, {
+            side,
+            faction: spec.factionId,
+            type: F().ELEPHANT,
+            n: elephant,
+            x: p.x,
+            y: p.y,
+            head,
+            form: "line",
+            formOpts: { ranks: ranksFor(elephant, 3), spacing: 30 },
           }),
         );
       }
@@ -1624,8 +1907,8 @@
         NY = 10;
       for (let i = 0; i < S.length; i++) {
         const s = S[i];
-        const hw = 960 * s,
-          hh = 760 * s;
+        const hw = 1120 * s,
+          hh = 930 * s;
         let best = null,
           bs = -1;
         for (let gy = 380; gy <= world.h - 380; gy += 220) {
@@ -1675,6 +1958,13 @@
       this.barkT = 0.8;
       this.barkSeq = 0;
       this.fallenFlags = [];
+      for (let i = 0; i < PROJECTILE_CAP; i++) this.projectiles[i].active = false;
+      this.projectileCursor = 0;
+      this.projectileActive = 0;
+      this.projectileSeq = 0;
+      this.projectileLaunched.fill(0);
+      this.projectileImpacts.fill(0);
+      this.projectileHits.fill(0);
       this.sides = [
         { total0: 0, dead: 0, routed: 0, alive: 0, gone: 0 },
         { total0: 0, dead: 0, routed: 0, alive: 0, gone: 0 },
@@ -1686,8 +1976,8 @@
 
       const f = this._findField(world, world.nav);
       this.field = f;
-      const gap = 900 * f.s;
-      const span = 720 * f.s;
+      const gap = 1150 * f.s;
+      const span = 860 * f.s;
       // side 0 (the player) deploys west facing east; side 1 east facing west
       this._deploySide(agents, 0, setup.sides[0], f.x - gap / 2, f.y, 0, span);
       this._deploySide(agents, 1, setup.sides[1], f.x + gap / 2, f.y, Math.PI, span);
@@ -1820,14 +2110,127 @@
         F().drawMarks(c, a, t, moving);
         return;
       }
-      if (a.type === F().CAV || a.type === F().HBOW) F().drawRider(c, a, moving);
+      if (isMounted(a.type)) F().drawRider(c, a, moving);
       else F().drawFoot(c, a, moving);
       F().drawMarks(c, a, t, moving);
     }
 
+    _drawProjectiles(c) {
+      if (!this.projectileActive) return;
+      for (let i = 0; i < PROJECTILE_CAP; i++) {
+        const p = this.projectiles[i];
+        if (!p.active) continue;
+        const q = Math.min(1, p.age / p.dur);
+        const lift = Math.sin(q * Math.PI) * p.arc;
+        const dx = p.x1 - p.x0;
+        const dy = p.y1 - p.y0;
+        const d = Math.hypot(dx, dy) || 1;
+        const ux = dx / d;
+        const uy = dy / d;
+
+        if (p.kind === PROJ_STONE) {
+          c.strokeStyle = "rgba(61,52,43,0.18)";
+          c.lineWidth = 1;
+          ZS.wcirc(c, p.x, p.y + 1, 3 + q * 3, p.seed + 1, 0.7);
+          c.fillStyle = "rgba(83,72,57,0.9)";
+          c.strokeStyle = "rgba(61,52,43,0.9)";
+          c.lineWidth = 1.2;
+          ZS.wcirc(c, p.x, p.y - lift - 7, 4.5, p.seed + 3, 0.65);
+          c.fill();
+          ZS.wline(
+            c,
+            p.x - ux * 9,
+            p.y - lift - uy * 9 - 7,
+            p.x - ux * 20,
+            p.y - lift - uy * 20 - 7,
+            p.seed + 5,
+            1.5,
+          );
+          continue;
+        }
+
+        const x = p.x;
+        const y = p.y - lift - 7;
+        const len = p.kind === PROJ_ARROW ? 15 : p.kind === PROJ_REPEAT ? 9 : 12;
+        c.strokeStyle = p.kind === PROJ_REPEAT ? "rgba(41,91,54,0.94)" : "rgba(61,52,43,0.88)";
+        c.lineWidth = p.kind === PROJ_REPEAT ? 1.35 : 1.05;
+        ZS.wline(c, x - ux * len, y - uy * len, x + ux * 2, y + uy * 2, p.seed, 0.45);
+        if (p.kind === PROJ_ARROW) {
+          const px = -uy;
+          const py = ux;
+          ZS.wline(
+            c,
+            x - ux * (len - 2) - px * 2,
+            y - uy * (len - 2) - py * 2,
+            x - ux * (len - 5) + px * 2,
+            y - uy * (len - 5) + py * 2,
+            p.seed + 7,
+            0.35,
+          );
+        } else if (p.kind === PROJ_REPEAT) {
+          ZS.wline(
+            c,
+            x - ux * 6 - uy * 1.8,
+            y - uy * 6 + ux * 1.8,
+            x - ux * 1 - uy * 1.8,
+            y - uy + ux * 1.8,
+            p.seed + 9,
+            0.3,
+          );
+        }
+      }
+    }
+
     drawFX(c, fx) {
       for (const sh of fx) {
-        if (sh.impact) {
+        if (sh.stoneImpact) {
+          const k = sh.t / 0.72;
+          const out = 1 - k;
+          c.strokeStyle = "rgba(92,72,50," + (0.72 * k).toFixed(2) + ")";
+          c.lineWidth = 1.4;
+          ZS.wcirc(c, sh.x, sh.y, 7 + out * sh.r, sh.seed + 3, 2.4);
+          c.strokeStyle = "rgba(145,118,78," + (0.6 * k).toFixed(2) + ")";
+          for (let i = 0; i < 12; i++) {
+            const an = ZS.hash(sh.seed + i * 11) * Math.PI * 2;
+            const near = 5 + out * 16;
+            const far = near + out * (18 + ZS.hash(sh.seed + i * 17) * 32);
+            ZS.wline(
+              c,
+              sh.x + Math.cos(an) * near,
+              sh.y + Math.sin(an) * near,
+              sh.x + Math.cos(an) * far,
+              sh.y + Math.sin(an) * far,
+              sh.seed + i * 19,
+              1.2,
+            );
+          }
+          c.fillStyle = "rgba(83,72,57," + (0.75 * k).toFixed(2) + ")";
+          for (let i = 0; i < 5; i++) {
+            const an = ZS.hash(sh.seed + i * 23) * Math.PI * 2;
+            const d = out * (15 + ZS.hash(sh.seed + i * 29) * 35);
+            c.beginPath();
+            c.arc(sh.x + Math.cos(an) * d, sh.y + Math.sin(an) * d, 1.8 + k, 0, 6.29);
+            c.fill();
+          }
+        } else if (sh.projectileImpact) {
+          const life = sh.hit ? 0.34 : 0.24;
+          const k = sh.t / life;
+          c.strokeStyle = "rgba(61,52,43," + (0.78 * k).toFixed(2) + ")";
+          c.lineWidth = sh.projectileImpact === PROJ_REPEAT ? 1.35 : 1.05;
+          ZS.wline(
+            c,
+            sh.x - sh.dx * 10,
+            sh.y - sh.dy * 10 - 4,
+            sh.x + sh.dx * 3,
+            sh.y + sh.dy * 3 - 4,
+            sh.seed,
+            0.55,
+          );
+          c.strokeStyle = sh.hit
+            ? "rgba(146,74,45," + (0.55 * k).toFixed(2) + ")"
+            : "rgba(132,116,88," + (0.48 * k).toFixed(2) + ")";
+          ZS.wcirc(c, sh.x, sh.y - 2, 2 + (1 - k) * 8, sh.seed + 7, 1.1);
+        } else if (sh.impact) {
           const life = sh.impact === 2 ? 0.52 : 0.34;
           const k = sh.t / life;
           const px = -sh.dy;
@@ -1935,6 +2338,7 @@
 
     /* Runs every frame, in world space, effects or not (js/draw.js). */
     drawWorld(c, t) {
+      this._drawProjectiles(c);
       if (ZS.Command) ZS.Command.drawWorld(c, this, t);
     }
   }
@@ -1942,5 +2346,6 @@
   ScenarioSanguo.defaultSetup = defaultSetup;
   ScenarioSanguo.FIELD_CAP = FIELD_CAP;
   ScenarioSanguo.STATES = { HOLD, MOVE, ATTACK, CHARGE, ROUT };
+  ScenarioSanguo.TYPE_KEYS = TYPE_KEYS;
   ZS.ScenarioSanguo = ScenarioSanguo;
 })();

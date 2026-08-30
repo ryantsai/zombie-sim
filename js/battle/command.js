@@ -63,6 +63,7 @@
       this.marks.length = 0;
       this.lastT = null;
       this.drag = null;
+      this._notifySelection(true);
       if (this.bound) return this;
       this.bound = true;
       this._onKey = (e) => this.key(e);
@@ -84,6 +85,7 @@
       this.groups.clear();
       this.marks.length = 0;
       this.drag = null;
+      this._notifySelection(true);
     },
 
     /* ---------- selection ---------- */
@@ -102,6 +104,7 @@
         u.sel = true;
         this.selection.push(u);
       }
+      this._notifySelection(true);
       return this.selection.length;
     },
 
@@ -111,6 +114,7 @@
 
     /* Drop blocks that have died or broken since they were picked. */
     prune() {
+      const old = this.selection.length;
       let w = 0;
       for (let i = 0; i < this.selection.length; i++) {
         const u = this.selection[i];
@@ -118,6 +122,13 @@
         else u.sel = false;
       }
       this.selection.length = w;
+      if (w !== old) this._notifySelection(true);
+    },
+
+    _notifySelection(force) {
+      if (ZS.UI && ZS.UI.updateBattleSelection) {
+        ZS.UI.updateBattleSelection(this.selection, this.scen, force);
+      }
     },
 
     unitAt(x, y, side) {

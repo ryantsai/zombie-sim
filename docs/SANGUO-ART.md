@@ -14,7 +14,7 @@ wobble stable per render.
 
 | Module | What it draws | Read first if you need… |
 |---|---|---|
-| `js/figure/figure.js` | the stickman baseline + the 9 unit types + the rank marks | …to add a new unit type or change a silhouette |
+| `js/figure/figure.js` | the stickman baseline + 12 unit types + rank marks | …to add a new unit type or change a silhouette |
 | `js/figure/portrait.js` | headshot portraits of the 23 named generals | …a general's face in the menu or after-action card |
 | `js/art/flag.js` | flags — chrome (frame) + text (mark) as independent parts | …a faction banner, a province chip, or a planted battle marker |
 | `js/art/environment.js` | trees, hills, rivers, camps, walls, gates, bridges, ruins, roads | …the look of a battle field or a campaign map |
@@ -27,9 +27,10 @@ do not load any of these. The art system is 火柴三國-only.
 
 ## 1. The unit / figure system (`js/figure/figure.js`)
 
-The matchstick figure is the same primitive every unit is built on. One
-body; the **weapon and stance** carry the type read. No unique bodies,
-no per-unit artwork.
+The matchstick figure is the primitive behind every human unit. One body;
+the **weapon, armour, and stance** carry the type read. Siege equipment and
+war elephants are explicit footprint-scale exceptions, still drawn entirely
+from the same sketch primitives.
 
 ### 1.1 The baseline (`drawFoot`)
 
@@ -39,6 +40,7 @@ tall at scale 1, drawn with:
 - a ground shadow (a `wcirc` at `rgba(40,35,25,0.14)`)
 - two `wline` legs that swing with the gait
 - a `wline` torso
+- a small faction-coloured `wpoly` cuirass over the torso
 - a `wcirc` head with one eye dot on the forward side
 - a `wline` arm + the type's weapon (see §1.3)
 - a `wcirc` ground anchor
@@ -47,11 +49,12 @@ Every part takes `a.seed + <fixed offset>` as its wobble seed, so a
 unit's silhouette is stable per render — the lines don't redraw
 randomly from frame to frame.
 
-The rider variant (`drawRider`) is the same body on a 4-legged wobbly
-horse. The two new equipment variants (`drawCatapult` and `drawRam`)
-replace the stickman with a wobbly wagon; the standard bearer
-(`drawStandard`) keeps the body and swaps the weapon for a tall pole
-with a faction cloth.
+The rider variant (`drawRider`) is the same armoured body on a 4-legged
+wobbly horse. The two equipment variants (`drawCatapult` and `drawRam`)
+replace the stickman with a faction-trimmed wobbly wagon; the standard
+bearer (`drawStandard`) keeps the body and swaps the weapon for a tall
+pole with a faction cloth. `drawElephant` is the intentional scale
+exception: its broad body, howdah, blanket, tusks, and trunk are the unit read.
 
 ### 1.2 Rank tiers (§7.4)
 
@@ -75,26 +78,30 @@ together, in that order.
 |---|---|---|---|
 | 槍兵 spear | `SPEAR = 0` | long `wline`, ~14 px, angled up at rest, level in the thrust | tight rank spacing (`sepR` low) |
 | 刀盾 sword & shield | `DAO = 1` | short `wline` blade + `wcirc` / `wpoly` shield on the off-arm | — |
-| 弩兵 crossbow | `BOW = 2` | short horizontal `wline` + tick; a tracer `fx` on shot | halts to fire |
+| 弩兵 crossbow | `BOW = 2` | short horizontal `wline` + tick; a physical bolt on shot | halts to fire |
 | 戟兵 halberd | `JI = 3` | `wline` + a small cross `wline` near the tip | anti-cav bonus |
 | 騎兵 cavalry | `CAV = 4` | rider body on a horse (reuses `_drawCav`) + lance | fast, wedge default |
 | 弓騎 horse archer | `HBOW = 5` | cav body + bow tick | kite |
 | 投石車 catapult | `CATAPULT = 6` | the stickman is replaced by a wobbly A-frame on two wheels, an arm angled up, a counterweight, a stone | — |
 | 衝車 battering ram | `RAM = 7` | the stickman is replaced by a wobbly shed on wheels, a long log hanging from the front, a metal head | — |
 | 旗手 standard bearer | `STANDARD = 8` | the personal weapon is replaced by a tall pole carrying the faction's flag cloth | the flag carries the faction's read |
+| 虎豹騎 tiger/leopard cavalry | `HUBAO = 9` | heavy rider armour, horse stripes, helmet plume, couched lance | fastest wedge charge |
+| 諸葛弩 repeating crossbow | `ZHUGE = 10` | crossbow stock, box magazine, and animated pump lever | rapid fire, short minimum range |
+| 象兵 war elephant | `ELEPHANT = 11` | large elephant, four walking legs, blanket, howdah, tusks, swinging trunk | slow heavy charge and strong knockback |
 
-The `drawFoot` function dispatches on `a.type`: equipment types
-(`CATAPULT`, `RAM`) take the whole body; the standard bearer
+The `drawFoot` function dispatches on `a.type`: equipment and elephant types
+(`CATAPULT`, `RAM`, `ELEPHANT`) take the whole body; the standard bearer
 (`STANDARD`) keeps the stickman and swaps the weapon.
 
 ### 1.4 The faction colour ramp (§7.2)
 
 Eight colours, assigned at campaign start; the player faction always
-takes slot 0. Reused as a low-alpha wash plus the ink line — sash,
-name-banner cloth, province fill, and now the flag cloth.
+takes slot 0. Reused as a low-alpha wash plus the ink line — armour,
+shield, barding, equipment trim, sash, name-banner cloth, province fill,
+and flag cloth. The simulator fixes slot 0 劉 to green and slot 1 曹 to blue.
 
 ```
-blue rgba(70,96,150) · red rgba(150,54,44) · green rgba(64,132,74) ·
+green rgba(64,132,74) · blue rgba(70,96,150) · red rgba(150,54,44) ·
 ochre rgba(150,120,60) · violet rgba(120,80,140) · teal rgba(60,130,130) ·
 brown rgba(120,86,60) · slate rgba(96,104,120)
 ```
@@ -109,7 +116,7 @@ at the requested alpha. The flag system has its own wider palette
 2. Add a `drawXxx(c, a)` function that follows the §1.1 anchor contract
    (`a.x`, `a.y` is between the feet).
 3. Branch in `drawFoot` on `a.type` to dispatch to your drawer (see the
-   `CATAPULT` / `RAM` precedent for "replace the whole body" and the
+   `CATAPULT` / `RAM` / `ELEPHANT` precedent for "replace the whole body" and the
    `STANDARD` precedent for "keep the body, swap the weapon").
 4. Tune the per-type stats in `js/scenarios/sanguo.js` (`HP`, `REACH`,
    `DMG`, `SPD`, etc.).
@@ -513,6 +520,7 @@ js/figure/figure.js        — ZS.figure
   drawStandard(c, a, hx, hy, k)   the flag-bearing variant; honours a.flag
   drawShield(c, a, hx, hy, k)
   drawCatapult(c, a) / drawRam(c, a)
+  drawElephant(c, a, moving)
   wash(i, alpha)              FACTION colour at the given alpha
 
 js/figure/portrait.js     — ZS.portrait
