@@ -1,0 +1,17 @@
+# Issue 8: `oxfmt js/` normalises every file it touches to LF. With
+# core.autocrlf=true the working copy is CRLF, so formatting one sanguo file
+# showed all 17 pre-existing core files as modified with no content change —
+# which is why `npm run format` lists paths by hand instead of taking `js/`.
+#
+# Everything in the index is already LF. Pinning the *working copy* to LF too
+# removes the conversion entirely, on every platform.
+* text=auto eol=lf
+
+# Assets git must never touch.
+*.woff2 binary
+*.ttf   binary
+*.wav   binary
+*.mp3   binary
+*.ogg   binary
+*.png   binary
+*.jpg   binary
