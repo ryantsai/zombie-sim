@@ -18,7 +18,7 @@ re-deriving anything.
 |---|---|
 | **Phase** | **P3 — campaign skeleton** |
 | **Status** | ✅ **complete** (P0–P3 ✅) |
-| **Verify** | `npm test` — `test/sanguo-p3.js` **131 / 0**: map invariants (57 commanderies, connected graph, symmetric adjacency, every seat inside its own cell), the general almanac wired through the roster seam, the whole player order set and every refusal, **ten seasons with no broken invariant**, determinism on a seed, autosave → reload → resume → keep playing, the occupation mechanics and the anti-chain property, the picker, the view and its teardown. P0 **45 / 0**, P1 **62 / 0**, pages **23 / 0**, `tools/check-generals.js` 200 valid<br>Campaign pacing (`test/campaign-sweep.js`, 20 seeds): **1.58 commanderies change hands per season**, longest single-stack run **4**, 106% of the men still on the board, 22 → **12.8** factions over 30 years<br>Formation browser probe: all five shapes march and settle at **6–11 px mean slot error**; a 35% casualty cut regenerates a 150-man square to exactly 98 slots. Aggressive 16-seed sweep: **16/16 resolve in 40.8–129.6 s**, no stalemates; seed 47 repeats exactly at 78.367 s. Earlier P2 probe: 6/6 passive samples resolve in 62–119 s; headed Chrome holds **60.0 fps at 2,000/side**; original three pages boot clean<br>P1 baseline: 62 / 45 / 23 assertions; 16-seed sweep green before P2 |
+| **Verify** | `npm test` — `test/sanguo-p3.js` **131 / 0**: map invariants (57 commanderies, connected graph, symmetric adjacency, every seat inside its own cell), the general almanac wired through the roster seam, the whole player order set and every refusal, **ten seasons with no broken invariant**, determinism on a seed, autosave → reload → resume → keep playing, the occupation mechanics and the anti-chain property, the picker, the view and its teardown. P0 **48 / 0** (now including the module manifest), P1 **62 / 0**, pages **29 / 0**, `tools/check-generals.js` 200 valid, `oxlint` runs first<br>Campaign pacing (`test/campaign-sweep.js`, 20 seeds): **1.58 commanderies change hands per season**, longest single-stack run **4**, 106% of the men still on the board, 22 → **12.8** factions over 30 years<br>Formation browser probe: all five shapes march and settle at **6–11 px mean slot error**; a 35% casualty cut regenerates a 150-man square to exactly 98 slots. Aggressive 16-seed sweep: **16/16 resolve in 40.8–129.6 s**, no stalemates; seed 47 repeats exactly at 78.367 s. Earlier P2 probe: 6/6 passive samples resolve in 62–119 s; headed Chrome holds **60.0 fps at 2,000/side**; original three pages boot clean<br>P1 baseline: 62 / 45 / 23 assertions; 16-seed sweep green before P2 |
 | **Updated** | 2026-08-31 |
 
 ### Next action
@@ -486,15 +486,19 @@ live in `SANGUO-DESIGN.md` §11.)
 
 ## Open / blocked
 
-Tracked in [`ISSUES.md`](ISSUES.md). Nothing blocks P2; issue 1 (the test
-suites are not committed) is waiting on a call about repo layout.
-- **Rebuild the font subset whenever `js/i18n/*.js` or `js/campaign/data/*.js`
-  gains new text** — new glyphs silently fall back otherwise. `test/sanguo-p0.js`
-  runs the coverage check for you; standalone it is
-  `python tools/subset-font.py --check`. Rebuilding needs the source face
-  (LXGWWenKaiTC-Regular.ttf v1.522, ~15 MB) re-downloaded from
-  <https://github.com/lxgw/LxgwWenkaiTC/releases> — it is deliberately not
-  committed. See `FONTS.md`.
+Tracked in [`ISSUES.md`](ISSUES.md). Nothing blocks P4. Issues 1, 8 and 14 are
+resolved; 2 is now narrowed to "nothing *forces* the check to run", which is a
+pre-commit-hook-or-CI call for the maintainer.
+- **Rebuild the font subset whenever any file `index.html` loads gains new
+  text** — new glyphs silently fall back otherwise. `test/sanguo-p0.js` runs
+  the coverage check for you; standalone it is
+  `python tools/subset-font.py --check`, and `--sources` prints the 56 files it
+  reads. Rebuilding is one line and needs no download — the source face is
+  committed at `assets/fonts/LXGWWenKaiTC-Regular.ttf`:
+  `python tools/subset-font.py --source assets/fonts/LXGWWenKaiTC-Regular.ttf`.
+  See `FONTS.md`, which used to say the opposite.
+- **Whether a 15 MB `.ttf` belongs in the history** is an open call. It packs
+  to 8.8 MB of a 15.0 MiB pack.
 
 ---
 
@@ -627,6 +631,46 @@ because the thing that should have complained was looking somewhere else.
     created, emptied, and left empty with no error anywhere the suite was
     looking. The map builds at load now, and the suite walks the picker.
 
+
+### Found while closing the tooling issues
+
+Three of these were the same shape: a gate that could only see part of what it
+was gating, and could not tell you so.
+
+23. **Four glyphs the game loads were outside the subset — again.** The same
+    failure as #21, one layer out. `TEXT_GLOBS` was widened after #21 and was
+    *still* a hand-kept list, so `js/sound.js` and `js/fonts/font.js` (Han in
+    comments, but harvested files are read whole) were never looked at. The
+    harvest is now derived from `index.html` and its `<script src>` tags, so
+    there is no list left to go stale; `--sources` prints what it reads. 1,018
+    → 1,022 glyphs, and the new harvest is a verified strict superset of the
+    old. `ISSUES.md` #2 called this half unfixable by enforcement, which was
+    true of enforcement and not of deleting the list.
+24. **The generated `subset-data.js` was dirty the moment it was written.** It
+    emitted `ZS.FONT_DATA_URL` on one line, which oxfmt wraps, and it lives
+    under `js/` — so every rebuild left `npm run format` with something to do.
+    Python's `write_text` also gave it CRLF against an LF-pinned tree. Both are
+    now pinned in the generator, and oxfmt is a verified no-op on its output.
+25. **`oxfmt js/` was never really the problem in `ISSUES.md` #8.** Everything
+    in the index was already LF; `core.autocrlf=true` was checking the working
+    copy out as CRLF, so the first tool to write a file converted it and git
+    reported the whole file changed. The workaround had been to list format
+    paths by hand. `.gitattributes` pinning `* text=auto eol=lf` settles it —
+    `git add --renormalize .` was a no-op, which is the proof it was a
+    checkout-side problem all along.
+
+### The `<script>` trap, closed
+
+26. **A script that failed to parse was a silent no-op** (`ISSUES.md` #14).
+    The browser logs a `SyntaxError`, skips that file, and carries on: the page
+    still boots and the module is simply missing from `ZS`, so the failure
+    lands as a `TypeError` several files away. It cost two debugging sessions
+    in one day, both times a `},` pasted into `class Campaign`. Two guards, and
+    both failure modes were injected deliberately to confirm they fire:
+    `oxlint` at the front of `npm test` (names the file and line in
+    milliseconds), and `tools/module-manifest.js`, which reads what each page
+    promises and asserts the booted page delivered it. The manifest also
+    catches what no lint can — a module with no `<script>` tag on any page.
 
 ## Session log
 
