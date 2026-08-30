@@ -147,6 +147,7 @@
       const f = camp.player();
       if (!f) return fail("campaign.err.noFaction");
       if (!generalId) return fail("campaign.err.noGeneral");
+      if (f.generals.indexOf(generalId) < 0) return fail("campaign.err.notOurs");
       /* Whatever they were doing, they stop doing it first. */
       for (const a of camp.armiesOf(f.id)) ZS.Army.unassign(a, generalId);
       for (const id of camp.provincesOf(f.id)) {

@@ -24,6 +24,10 @@ someone could reasonably trip over.
 | [7](#7) | DEFERRED | structure | Duels still need their §9 file |
 | [8](#8) | NIT | tooling | `oxfmt js/` rewrites line endings across every core file |
 | [9](#9) | NIT | render | `scenario.hud()` allocates per frame |
+| [10](#10) | OPEN | campaign | The auto-resolve model is untuned, and P4 has to keep it honest against a played battle |
+| [11](#11) | OPEN | campaign | 108 of the 200 generals serve nobody |
+| [12](#12) | DEFERRED | campaign | No diplomacy, no events, no win condition beyond last-one-standing |
+| [13](#13) | NIT | campaign | The campaign has no fog of war |
 
 ---
 
@@ -34,13 +38,18 @@ someone could reasonably trip over.
 `.gitignore` excludes `.verify/`, so none of these are in the repository:
 
 ```
-.verify/sanguo-p0.js          45 assertions
-.verify/sanguo-p1.js          62 assertions
-.verify/pages-regression.js   23 assertions — guards the other three pages
-.verify/sanguo-seed-sweep.js  16-seed no-hang sweep
-.verify/sanguo-shot.js        screenshot helper
-.verify/sanguo-battle-shot.js screenshot helper
+.verify/sanguo-p0.js             45 assertions
+.verify/sanguo-p1.js             62 assertions
+.verify/sanguo-p3.js            121 assertions
+.verify/pages-regression.js      23 assertions — guards the other three pages
+.verify/sanguo-seed-sweep.js     16-seed no-hang sweep
+.verify/sanguo-shot.js           screenshot helper
+.verify/sanguo-battle-shot.js    screenshot helper
+.verify/sanguo-campaign-shot.js  screenshot helper
 ```
+
+`tools/check-generals.js` is the one gate that *is* committed, which is the
+shape the rest of them should have.
 
 They exist in the current working copy only. A fresh clone gets the game and
 none of its tests.
@@ -69,8 +78,13 @@ next person to touch the core has no way to know they broke `zombiesim.html`.
 scratch and screenshots, and update the `PROGRESS.md` / `AGENTS.md` paths. Low
 cost, and it makes the regression guard real.
 
-**Raised:** 2026-08-30, after the P1 bug sweep. Not actioned — this is the
-maintainer's call about repo layout.
+**It has now cost something.** P3 added a fifth suite and 121 more assertions,
+and the P1 suite needed an edit when `go("campaign")` stopped being a refused
+phase — that edit is invisible to anyone else because the file is not tracked.
+Two people working on this game cannot see each other's tests.
+
+**Raised:** 2026-08-30, after the P1 bug sweep. Still not actioned — this is
+the maintainer's call about repo layout. Restated 2026-08-31 with P3.
 
 ---
 
@@ -85,8 +99,21 @@ face, with no error anywhere.
 
 `python tools/subset-font.py --check` catches it, and `.verify/sanguo-p0.js`
 runs that check, so it is caught **if someone runs the suite**. Nothing enforces
-it. It has already happened once: the P1 battle strings added 44 glyphs outside
-the subset.
+it. It has already happened twice.
+
+Once at P1, when the battle strings added 44 glyphs outside the subset. And
+again, invisibly, from P7 until P3: `TEXT_GLOBS` only listed `js/i18n/*.js`,
+`js/campaign/data/*.js` and `index.html`, but `js/art/flag.js` draws a house
+glyph on every banner and `js/figure/portrait.js` carries general names — 120
+characters between them and the other art files, none of them harvested. They
+fell back to system kai on every page while `--check` cheerfully reported the
+subset complete, because the check was asking the same too-narrow question the
+build was. The globs now cover every file that can draw text.
+
+**That is the shape of this issue to watch for.** The check is only as good as
+the list of places text can live, and that list is maintained by hand. A new
+module that draws a Han character and is not in `TEXT_GLOBS` reintroduces the
+whole problem with the gate still green.
 
 Rebuilding also needs the ~15 MB source face re-downloaded (deliberately not
 committed — see `FONTS.md`), so the fix is not something a contributor
@@ -202,3 +229,103 @@ allocation in hot loops; this is once per frame rather than once per agent, and
 the zombie, cannae and hold packs all do the same, so it is consistent with the
 codebase rather than a new sin. Worth hoisting into a reused record if the HUD
 grows.
+
+---
+
+## 10
+
+**OPEN · campaign · the auto-resolve model is untuned**
+
+`js/campaign/autoresolve.js` decides every campaign battle in P3, and its
+numbers were chosen to produce a moving board, not because they are right:
+
+| Constant | Value | Concern |
+|---|---|---|
+| `WALL_BONUS` | `[1.0, 1.25, 1.6]` | what a man behind a wall is worth |
+| `GARRISON_QUALITY` | `0.75` | garrison troops against field troops |
+| the RNG band | `±6%` on the strength ratio | how often the weaker side wins |
+| `loserFrac` / `winnerFrac` | `0.30-0.65` / `0.06-0.28` | how expensive a battle is |
+
+The **shape** is settled and is not the open question: it returns the §4.3
+`BattleResult`, so P4 replaces arithmetic rather than a contract.
+
+What P4 has to do is the harder half of §4.3: *"the closed-form model is tuned
+to roughly match played-out results so skipping isn't strictly better or
+worse."* That needs both paths to exist before either can be judged, which is
+why this is P4's problem and not P3's. The natural probe is a fixed
+`BattleSetup` fought both ways over a spread of seeds, comparing winner rate
+and loss ratio.
+
+Interacts with issue 3: a played-out battle's losses are whatever the sim
+produced, so tuning the closed form against it inherits whatever the pacing
+constants are doing.
+
+**Raised:** 2026-08-31, with P3.
+
+---
+
+## 11
+
+**OPEN · campaign · 108 of the 200 generals serve nobody**
+
+`js/campaign/data/factions.js` places 92 of the almanac's 200 officers with a
+warlord for 194. The remaining 108 are real records with real stats that no
+campaign can ever field.
+
+Most of that is correct and deliberate — the almanac spans the whole war, and
+姜維, 鄧艾, 陸抗 and 司馬昭 are not available in 194 to anybody. But some of it
+is simply unwritten: 張燕 and 士燮 lead factions whose leader is `null` because
+the almanac has no entry for them, and several minor warlords hold a province
+with one officer or none.
+
+Three things could close it, and they are not the same decision:
+
+1. **Free officers.** Unplaced generals sit in their historical province and
+   can be recruited — the obvious use for most of the 108, and the reason
+   §4.1's `Recruit` order exists alongside `Assign`.
+2. **A join-by-date table.** 諸葛亮 should not be recruitable in 194. Needs a
+   `from` year per record, which is almanac data and therefore P5's call.
+3. **Two more almanac entries** for 張燕 and 士燮, or accepting that those two
+   factions are led by nobody.
+
+None of it blocks P3 — `ZS.Roster` filters unknown ids and a leaderless
+faction plays — but a campaign where two thirds of the roster is unreachable is
+not the game §4.1 describes. Scheduled thinking: P5, with the rest of the RPG
+layer.
+
+**Raised:** 2026-08-31, with P3.
+
+---
+
+## 12
+
+**DEFERRED · campaign · no diplomacy, events, or real win condition**
+
+P3 is the skeleton §10 asked for and deliberately stops there. Missing, each
+already scheduled:
+
+- **Diplomacy-lite** (truce, gift, demand) — §4.1 marks it v2.
+- **Random events** — `js/campaign/data/events.js` is in the §9 file plan and
+  does not exist yet; P6.
+- **A win condition.** `Campaign.recount()` ends the game when one faction is
+  left standing, which on a 57-commandery map is a very long time. §10 files
+  "full campaign playable start to a win condition" under P7.
+- **Rest**, the sixth order in §4.1's list, which heals injuries and recovers
+  loyalty. It has nothing to do until P5 gives generals injuries.
+
+Not a bug. Recorded so nobody re-derives the gap.
+
+---
+
+## 13
+
+**NIT · campaign · no fog of war**
+
+The map shows every faction's armies, garrisons and treasury-funded
+development at all times. The design does not ask for fog, and hiding the board
+would make the AI's marches — the main sign that the world is alive — invisible.
+
+Worth revisiting if it turns out that seeing every stack makes the campaign
+trivial rather than legible. It is a rendering decision, not a data one: the
+campaign state is already the single source, so a visibility filter would sit
+in `js/campaign/view.js` alone.

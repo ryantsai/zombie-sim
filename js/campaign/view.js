@@ -35,6 +35,10 @@
   /* Zoom thresholds — what is worth drawing at what scale. */
   const Z_NAME = 0.62;
   const Z_DETAIL = 1.0;
+  /* A seat can carry three things at once: its capital's banner, a stack
+     standing on it, and its garrison count. They are laid out around the glyph
+     rather than on it — banner left, token right, garrison below. */
+  const TOKEN_DX = 20;
 
   const View = {
     ownsLoop: false,
@@ -130,7 +134,11 @@
         const a = camp.armies[id];
         const p = ZS.Army.position(a, ZS.CampaignMap);
         if (!p) continue;
-        const d = (p.x - wx) * (p.x - wx) + (p.y - wy) * (p.y - wy);
+        /* Hit-test where the token is *drawn*, not where the stack nominally
+           is, or a standing stack is unclickable by exactly its own offset. */
+        const tx = p.x + (p.moving ? 0 : TOKEN_DX);
+        const ty = p.y - 11;
+        const d = (tx - wx) * (tx - wx) + (ty - wy) * (ty - wy);
         if (d < bd) {
           bd = d;
           best = a;
@@ -361,10 +369,10 @@
 
         if (!showName) continue;
         c.fillStyle = INK;
-        ZS.boilText(c, ZS.i18n.t(p.name), p.x, p.y - r - 5, 12.5, seed + 21, "center");
+        ZS.boilText(c, ZS.i18n.t(p.name), p.x, p.y - r - 7, 12.5, seed + 21, "center");
         if (zoom >= Z_DETAIL && pr && pr.owner) {
           c.fillStyle = INK_SOFT;
-          ZS.boilText(c, ZS.i18n.nc(pr.garrison), p.x, p.y + r + 13, 10.5, seed + 33, "center");
+          ZS.boilText(c, ZS.i18n.nc(pr.garrison), p.x, p.y + r + 15, 10.5, seed + 33, "center");
         }
       }
     },
@@ -380,7 +388,10 @@
         if (!p || p.x < vis.x0 || p.x > vis.x1 || p.y < vis.y0 || p.y > vis.y1) continue;
         const flag = ZS.flag.get(fd.flag);
         if (!flag) continue;
-        ZS.flag.plant(c, flag, p.x + 13, p.y + 4, 26, t);
+        /* Left of the seat. The army token sits to its right and the garrison
+           count below it, so the three things a capital draws do not land on
+           top of each other. */
+        ZS.flag.plant(c, flag, p.x - TOKEN_DX - 2, p.y + 15, 23, t);
       }
     },
 
@@ -394,6 +405,9 @@
         if (!fd) continue;
         const seed = map.hashId(a.id);
         const bob = p.moving ? Math.sin(t * 3 + seed) * 1.1 : 0;
+        /* A stack on the road is drawn on the road; a stack standing in a
+           province steps to the right of the seat glyph so both stay legible. */
+        const x = p.moving ? p.x : p.x + TOKEN_DX;
         const y = p.y - 11 + bob;
         const tint = fd.tint;
 
@@ -405,11 +419,11 @@
         ZS.wpoly(
           c,
           [
-            { x: p.x - w, y: y - h },
-            { x: p.x + w, y: y - h },
-            { x: p.x + w, y: y + h * 0.3 },
-            { x: p.x, y: y + h },
-            { x: p.x - w, y: y + h * 0.3 },
+            { x: x - w, y: y - h },
+            { x: x + w, y: y - h },
+            { x: x + w, y: y + h * 0.3 },
+            { x: x, y: y + h },
+            { x: x - w, y: y + h * 0.3 },
           ],
           seed + 7,
           1.0,
@@ -422,11 +436,13 @@
         c.stroke();
 
         c.fillStyle = "#f3edde";
-        ZS.boilText(c, ZS.i18n.t(fd.house), p.x, y + 3.5, 10, seed + 11, "center");
+        ZS.boilText(c, ZS.i18n.t(fd.house), x, y + 3.5, 10, seed + 11, "center");
 
         if (zoom >= Z_NAME) {
+          /* Above the shield, so it never lands on the province's own garrison
+             count, which is drawn below the seat. */
           c.fillStyle = INK_SOFT;
-          ZS.boilText(c, ZS.i18n.nc(a.troops), p.x, y + h + 11, 10, seed + 17, "center");
+          ZS.boilText(c, ZS.i18n.nc(a.troops), x, y - h - 3, 10, seed + 17, "center");
         }
       }
     },
@@ -472,7 +488,7 @@
         if (p) {
           c.strokeStyle = "rgba(150,54,44,0.8)";
           c.lineWidth = 1.8;
-          ZS.wcirc(c, p.x, p.y - 11, 15, 407.1, 1.6);
+          ZS.wcirc(c, p.x + (p.moving ? 0 : TOKEN_DX), p.y - 11, 15, 407.1, 1.6);
           c.stroke();
         }
       }

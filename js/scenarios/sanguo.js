@@ -113,6 +113,13 @@
     return type === F().CAV || type === F().HBOW || type === F().HUBAO || type === F().ELEPHANT;
   }
 
+  function hasSkill(a, id) {
+    const ids = a && a.skillIds;
+    if (!ids) return false;
+    for (let i = 0; i < ids.length; i++) if (ids[i] === id) return true;
+    return false;
+  }
+
   /* A default skirmish, used when nothing hands us a BattleSetup (§4.3). */
   function defaultSetup(seed) {
     const common = {
@@ -126,6 +133,26 @@
       ram: 0.02,
       standard: 0.02,
     };
+    const playerGeneral = ZS.Generals
+      ? ZS.Generals.snapshot("guan_yu", { unitType: "dao" })
+      : {
+          id: "guan_yu",
+          name: { "zh-tw": "關羽", en: "Guan Yu" },
+          wu: 97,
+          tong: 95,
+          zhi: 75,
+          unitType: "dao",
+        };
+    const enemyGeneral = ZS.Generals
+      ? ZS.Generals.snapshot("cao_cao", { unitType: "cav" })
+      : {
+          id: "cao_cao",
+          name: { "zh-tw": "曹操", en: "Cao Cao" },
+          wu: 78,
+          tong: 96,
+          zhi: 96,
+          unitType: "cav",
+        };
     return {
       seed: seed | 0 || 20250830,
       field: { kind: "open", terrain: "plain", biome: "central" },
@@ -135,32 +162,14 @@
           comp: { ...common, zhuge: 0.09, elephant: 0.03 },
           onField: 1000,
           reserve: 0,
-          generals: [
-            {
-              id: "fire_general",
-              name: "battle.general.fire",
-              wu: 82,
-              tong: 86,
-              zhi: 74,
-              unitType: "dao",
-            },
-          ],
+          generals: [playerGeneral],
         },
         {
           factionId: 1,
           comp: { ...common, hubao: 0.09, elephant: 0.03 },
           onField: 1000,
           reserve: 0,
-          generals: [
-            {
-              id: "edge_general",
-              name: "battle.general.edge",
-              wu: 88,
-              tong: 82,
-              zhi: 78,
-              unitType: "cav",
-            },
-          ],
+          generals: [enemyGeneral],
         },
       ],
       objective: "rout",
@@ -440,6 +449,10 @@
         tong: extra.tong || 0,
         zhi: extra.zhi || 0,
         commandLost: false,
+        model: extra.model || null,
+        portrait: extra.portrait || null,
+        skillIds: extra.skillIds || null,
+        generalLevel: extra.generalLevel || 1,
       };
     }
 
@@ -457,7 +470,9 @@
       const base = u && u.st === CHARGE ? CHARGE_SPD[a.type] || SPD[a.type] : SPD[a.type];
       // fatigue costs up to a third of the top speed
       const nerve = u && u.morState === ZS.BattleMorale.WAVERING ? 0.82 : 1;
-      return base * nerve * (1 - 0.33 * Math.min(1, a.fatigue));
+      const general = u && u.general;
+      const swift = general && hasSkill(general, "swift") ? 1.1 : 1;
+      return base * nerve * swift * (1 - 0.33 * Math.min(1, a.fatigue));
     }
 
     /* ---------- orders (the whole point of the pack) ---------- */
@@ -946,7 +961,8 @@
       const u = this.units[a.un];
       // fatigue accrues while sprinting or swinging, and recovers standing still
       const sp = Math.hypot(a.vx, a.vy);
-      a.fatigue = ZS.clamp(a.fatigue + (sp > 90 ? dt * 0.05 : -dt * 0.03), 0, 1);
+      const fatigueScale = u && u.general && hasSkill(u.general, "discipline") ? 0.84 : 1;
+      a.fatigue = ZS.clamp(a.fatigue + (sp > 90 ? dt * 0.05 * fatigueScale : -dt * 0.03), 0, 1);
 
       if (a.fleeing && a.rallyT <= 0) {
         this._flee(a, dt, grid);
@@ -1063,7 +1079,8 @@
       if (be && a.atkCd <= 0 && bd < reach * reach) {
         a.atkCd = ATK_CD[a.type] * (0.8 + ZS.hash(a.seed) * 0.5);
         a.atk = 0.16;
-        a.fatigue = Math.min(1, a.fatigue + 0.012);
+        const fatigueScale = u.general && hasSkill(u.general, "discipline") ? 0.84 : 1;
+        a.fatigue = Math.min(1, a.fatigue + 0.012 * fatigueScale);
         this._hit(a, be, DMG[a.type]);
       }
 
@@ -1159,7 +1176,8 @@
         a.vx += (Math.cos(u.head) * sp - a.vx) * k;
         a.vy += (Math.sin(u.head) * sp - a.vy) * k;
         a.wantMove = true;
-        a.fatigue = Math.min(1, a.fatigue + dt * 0.08);
+        const fatigueScale = u.general && hasSkill(u.general, "discipline") ? 0.84 : 1;
+        a.fatigue = Math.min(1, a.fatigue + dt * 0.08 * fatigueScale);
         if (a.hitCd <= 0) {
           const R = REACH[a.type];
           let be = null,
@@ -1379,9 +1397,10 @@
       let d = dmg;
       if (be.fleeing) d += 1; // a spear in the back of a running man
       // a braced spear wall against a horse
-      if ((a.type === F().SPEAR || a.type === F().JI) && isMounted(be.type)) {
+      if ((a.type === F().SPEAR || a.type === F().JI) && (isMounted(be.type) || be.general)) {
         d *= ANTI_CAV[a.type];
       }
+      if (a.general && hasSkill(a, "valiant")) d *= 1.08;
       be.hp -= d;
       be.flash = 0.3;
       if (this.morale) this.morale.hit(be, a, d);
@@ -1572,6 +1591,7 @@
       };
       for (let i = 0; i < specs.length; i++) {
         const spec = specs[i] || {};
+        const almanac = ZS.Generals && spec.id ? ZS.Generals.get(spec.id) : null;
         const wanted = typeByName[spec.unitType];
         let unit = null;
         if (wanted !== undefined) {
@@ -1601,14 +1621,39 @@
         }
         if (!a) a = unit.mem[0];
         if (!a) continue;
-        const tong = ZS.clamp(Number(spec.tong) || 50, 1, 100);
+        const tong = ZS.clamp(
+          Number(spec.tong !== undefined ? spec.tong : almanac && almanac.tong) || 50,
+          1,
+          100,
+        );
         a.tier = F().GENERAL;
         a.general = true;
         a.generalId = spec.id || "general_" + a.side + "_" + i;
-        a.name = spec.name || "battle.general.unknown";
-        a.wu = ZS.clamp(Number(spec.wu) || 50, 1, 100);
+        a.name = spec.name || (almanac && almanac.name) || "battle.general.unknown";
+        a.wu = ZS.clamp(
+          Number(spec.wu !== undefined ? spec.wu : almanac && almanac.wu) || 50,
+          1,
+          100,
+        );
         a.tong = tong;
-        a.zhi = ZS.clamp(Number(spec.zhi) || 50, 1, 100);
+        a.zhi = ZS.clamp(
+          Number(spec.zhi !== undefined ? spec.zhi : almanac && almanac.zhi) || 50,
+          1,
+          100,
+        );
+        a.model = spec.model ||
+          (almanac && almanac.model) || {
+            mounted: true,
+            scale: 1.5,
+            mount: "bay",
+            weapon: "spear",
+            armor: "lamellar",
+            robe: "red",
+          };
+        a.portrait = spec.portrait || (almanac && almanac.portrait) || null;
+        a.skillIds = spec.skillIds || (almanac && almanac.skillIds) || ["inspire"];
+        a.generalLevel =
+          Number(spec.level !== undefined ? spec.level : almanac && almanac.level) || 1;
         a.auraR = 70 + tong * 0.9;
         a.hp += 5 + Math.round(a.wu * 0.04);
         a.hp0 = a.hp;
@@ -2100,6 +2145,14 @@
       const zoom = cam ? cam.zoom : 1;
       const unit = this.units[a.un];
       const largeField = this.sides[0].total0 + this.sides[1].total0 > 1200;
+      // Named generals are never swallowed by formation LOD. Even if their
+      // assigned block is infantry, their catalogue model is a mounted 1.5x
+      // hero silhouette, followed by the ordinary banner/aura marks.
+      if (a.general) {
+        F().drawGeneral(c, a, moving);
+        F().drawMarks(c, a, t, moving);
+        return;
+      }
       if ((zoom < 0.28 || (largeField && zoom < 0.43)) && unit) {
         if (unit.st === ROUT) {
           // A routed block is no longer a rank-shaped mass. Keep a sparse

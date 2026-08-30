@@ -162,15 +162,9 @@
       const a = camp.raiseArmy(factionId, best, take);
       if (a) {
         a.since = camp.turn;
-        /* The leader rides with the first stack raised, if nobody has them. */
-        const fd = camp.factionDef(factionId);
-        if (fd && fd.leader && !armies.length) {
-          let taken = false;
-          for (const other of camp.armiesOf(factionId)) {
-            if (other.generals.indexOf(fd.leader) >= 0) taken = true;
-          }
-          if (!taken) ZS.Army.assign(a, fd.leader);
-        }
+        /* Officers who are not already leading a stack or minding a province
+           ride with it — the same rule the opening position uses. */
+        camp.staffArmy(a, camp.factionDef(factionId));
       }
     },
 

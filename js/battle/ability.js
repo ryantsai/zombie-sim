@@ -9,8 +9,12 @@
   "use strict";
   const ZS = (window.ZS = window.ZS || {});
 
+  const skillInspire =
+    ZS.GeneralSkills && ZS.GeneralSkills.get("inspire")
+      ? ZS.GeneralSkills.get("inspire").battle
+      : null;
   const DEFS = {
-    inspire: { cooldown: 24, radius: 190, baseHeal: 0.16, potencyHeal: 0.12 },
+    inspire: skillInspire || { cooldown: 24, radius: 190, baseHeal: 0.16, potencyHeal: 0.12 },
   };
 
   class BattleAbilities {
@@ -36,6 +40,16 @@
       if (!def || this.scenario.over) return false;
       const g = general || this._playerGeneral();
       if (!g || g.dead || g.routFlag || g.gone || g.abilityCd > 0) return false;
+      if (g.skillIds) {
+        let learned = false;
+        for (let i = 0; i < g.skillIds.length; i++) {
+          if (g.skillIds[i] === id) {
+            learned = true;
+            break;
+          }
+        }
+        if (!learned) return false;
+      }
       const potency = ZS.clamp(g.zhi / 100, 0, 1);
       const units = this.scenario.units;
       for (let i = 0; i < units.length; i++) {

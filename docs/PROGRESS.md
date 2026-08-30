@@ -15,17 +15,25 @@ re-deriving anything.
 
 | | |
 |---|---|
-| **Phase** | **P2 — battle depth** |
-| **Status** | ✅ **complete** (P0–P2 ✅) |
-| **Verify** | Formation browser probe: all five shapes march and settle at **6–11 px mean slot error**; a 35% casualty cut regenerates a 150-man square to exactly 98 slots. Aggressive 16-seed sweep: **16/16 resolve in 40.8–129.6 s**, no stalemates; seed 47 repeats exactly at 78.367 s. Earlier P2 probe: 6/6 passive samples resolve in 62–119 s; headed Chrome holds **60.0 fps at 2,000/side**; original three pages boot clean<br>P1 baseline (machine-local suites): 62 / 45 / 23 assertions; 16-seed sweep green before P2 |
+| **Phase** | **P3 — campaign skeleton** |
+| **Status** | ✅ **complete** (P0–P3 ✅) |
+| **Verify** | `.verify/sanguo-p3.js` **121 / 0**: map invariants (57 commanderies, connected graph, symmetric adjacency, every seat inside its own cell), the general almanac wired through the roster seam, the whole player order set and every refusal, **ten seasons with no broken invariant**, determinism on a seed, autosave → reload → resume → keep playing, the picker, the view and its teardown. P0 **45 / 0**, P1 **62 / 0**, pages **23 / 0**, `tools/check-generals.js` 200 valid<br>Formation browser probe: all five shapes march and settle at **6–11 px mean slot error**; a 35% casualty cut regenerates a 150-man square to exactly 98 slots. Aggressive 16-seed sweep: **16/16 resolve in 40.8–129.6 s**, no stalemates; seed 47 repeats exactly at 78.367 s. Earlier P2 probe: 6/6 passive samples resolve in 62–119 s; headed Chrome holds **60.0 fps at 2,000/side**; original three pages boot clean<br>P1 baseline (machine-local suites): 62 / 45 / 23 assertions; 16-seed sweep green before P2 |
 | **Updated** | 2026-08-31 |
 
 ### Next action
 
-**Start P3 — campaign skeleton.** P2 is complete: formations, morale, generals,
-the first active ability, combat feedback, the enemy commander and render LOD
-are all in and verified. Build the paper campaign map, provinces, armies and
-turn phases next; `SANGUO-DESIGN.md` §3 is the contract.
+**Start P4 — the handoff.** P3 is complete: the paper map, 57 commanderies,
+22 warlords, armies that march, the four-phase season, recruit / raise /
+develop / assign / march, a greedy AI planner, and the campaign save section.
+The 200-general almanac is wired in through `js/campaign/roster.js`.
+
+P4 is `BattleSetup` / `BattleResult` for real: a campaign clash drops into
+`ScenarioSanguo` and feeds losses, xp, injuries and territory back.
+**The seam is already in place** — `js/campaign/autoresolve.js` returns the
+§4.3 `BattleResult` shape today, and `ZS.Roster.snapshot(id)` returns the
+§4.3 general snapshot, so P4 replaces an implementation rather than inventing
+a contract. `field.kind` = `open` first, then `town` and `fort`, which is also
+where issue 4's terrain comes back.
 
 Battle pacing remains deliberately open under issue 3. The formation pass added
 `scenario.stallGiveups` instrumentation; its first aggressive-order sweep shows
@@ -43,7 +51,7 @@ Legend: ☐ not started · 🚧 in progress · ✅ done · ⛔ blocked
 | P0 | boot to MENU, font, i18n, Auth/Store/SaveManager round-trip | ✅ |
 | P1 | Skirmish battle: `ScenarioSanguo` + command layer | ✅ |
 | P2 | Battle depth: formations, morale, abilities, fixed step, LOD | ✅ |
-| P3 | Campaign skeleton: map, provinces, armies, turn phases | ☐ |
+| P3 | Campaign skeleton: map, provinces, armies, turn phases | ✅ |
 | P4 | The handoff: `BattleSetup`/`BattleResult`, field kinds, auto-resolve | ☐ |
 | P5 | Generals as RPG: xp, skills, items, loyalty, duels | ☐ |
 | P6 | AI factions, events, after-action card, `RemoteStore` | ☐ |
@@ -63,13 +71,14 @@ design contract.
 | 7.3 | Flag preset catalogue — 94 entries covering the 3 kingdoms, 14 major families, 22 194 CE warlords, 34 major generals, 13 Han provinces, 5 imperial + rebellion banners | ✅ | `ZS.flag.PRESETS` |
 | 7.4 | Flag helpers — `plant()` for in-world markers, `bearer()` for STANDARD units, `forFaction()` for the campaign-pick panel | ✅ | `ZS.flag.{plant,bearer,forFaction}` |
 | 7.5 | STANDARD units honour `a.flag` — `drawStandard` routes through `ZS.flag.draw` when set, falls back to the generic faction sash otherwise | ✅ | `js/figure/figure.js` |
-| 7.6 | The portrait system — 23 named generals, headgear × beard × expression vocabulary | ✅ | `js/figure/portrait.js` |
+| 7.6 | The portrait system — all 200 generals, expanded headgear × beard × expression × hero-feature vocabulary | ✅ | `js/figure/portrait.js`, `js/campaign/data/generals.js` |
 | 7.7 | The environment catalogue — trees, hills, rivers, camps, walls, gates, bridges, ruins, roads | ✅ | `js/art/environment.js` |
 | 7.8 | The UI art catalogue — banner, save-thumb, button glyphs, seal, tally, title banner | ✅ | `js/art/ui.js` |
 | 7.9 | SFX kit — 16 battle events (sword clash, arrows, stone launch/impact, cavalry charge, drums, retreat horn, etc.) on top of the Outbreak's existing voice synth | ✅ | `js/sound.js` |
 | 7.10 | Music engine — procedural layered synth (pluck / bass / pad / drums) with `menu` / `battle` / `victory` / `defeat` / 8 `faction_sting_*` / `turn_change` tracks | ✅ | `js/music/music.js` |
 | 7.11 | One real menu track — a 22.6 s guzheng piece (Karplus-Strong synthesis), generated offline, base64-embedded as `js/music/menu-track-data.js` | ✅ | `tools/build-menu-track.py` + `menu-track-data.js` |
 | 7.12 | Brush-kai subset rebuilt from the official source face; `subset-font.py --check` covers all current i18n text | ✅ | `tools/subset-font.py`, `fonts/` |
+| 7.13 | General almanac — exactly 200 bilingual records, four §4.1 stats, nine §4.2 skills, deterministic portraits, always-mounted 1.5× models, 38 hand-authored story silhouettes | ✅ | `js/campaign/data/{generals,skills}.js`, `tools/check-generals.js` |
 
 The music wires into `ZS.App.go(state)` — each view declares its own
 soundtrack (`menu: 'menu'`, `battle: 'battle'`) and the shell handles
@@ -78,7 +87,7 @@ the rest. Settings.music flows into `music.setVolume` automatically.
 ### What P7 still needs
 
 - Battle balance — pacing (the 60-180 s window from §1), unit composition, ability tuning
-- Content — full campaign roster, dialogue, events, after-action card copy
+- Content — province almanac, dialogue, events, after-action card copy (the 200-general roster is complete)
 - The `RemoteStore` work that was deferred from P6
 
 ---
@@ -100,7 +109,7 @@ the rest. Settings.music flows into `music.setVolume` automatically.
 | 0.11 | Boiling canvas type (`ZS.boilText`) | ✅ | `js/text.js` |
 | 0.12 | Font loader (data-URI path for file://) | ✅ | `js/fonts/font.js` |
 | 0.13 | Font subset tooling + `--check` coverage mode | ✅ | `tools/subset-font.py` |
-| 0.14 | Font subset asset (65 KB woff2, 299 glyphs) + OFL text | ✅ | `fonts/`, `js/fonts/subset-data.js` |
+| 0.14 | Font subset asset + OFL text (285 KB woff2, 1,018 glyphs as of P3) | ✅ | `fonts/`, `js/fonts/subset-data.js` |
 | 0.15 | Playwright P0 verification | ✅ | `.verify/sanguo-p0.js` |
 | 0.16 | oxfmt + oxlint clean | ✅ | — |
 
@@ -229,6 +238,62 @@ the rest. Settings.music flows into `music.setVolume` automatically.
 
 ---
 
+## P3 task board
+
+| # | Task | Status | Files |
+|---|---|---|---|
+| 3.1 | Province data — 57 Han commanderies under the 13 州, bilingual, with size / wall / biome and the marching routes between them | ✅ | `js/campaign/data/provinces.js` |
+| 3.2 | Faction data — 22 warlords of 194 CE: banner, tint, capital, opening holdings, purse, temper, and the officers who serve them | ✅ | `js/campaign/data/factions.js` |
+| 3.3 | `ZS.CampaignMap` — graph, march cost in seasons, Dijkstra path, Voronoi province territory, pre-rendered paper sheet | ✅ | `js/campaign/map.js` |
+| 3.4 | `ZS.Army` — stacks, four-arm composition, marching, fatigue, upkeep, losses | ✅ | `js/campaign/army.js` |
+| 3.5 | `ZS.Campaign` — live state, derived economy, and the SaveManager `campaign` section | ✅ | `js/campaign/campaign.js` |
+| 3.6 | `ZS.Turn` — the four phases and the player order set (recruit / raise / develop / march / halt / disband / assign) | ✅ | `js/campaign/turn.js` |
+| 3.7 | `ZS.CampaignAI` — greedy planner, deterministic per (seed, turn, faction), `temper` as its one dial | ✅ | `js/campaign/ai.js` |
+| 3.8 | `ZS.AutoResolve` — provisional closed-form field battle and assault, already in the §4.3 `BattleResult` shape | ✅ | `js/campaign/autoresolve.js` |
+| 3.9 | `ZS.Roster` — the general seam; reads the 200-person almanac, degrades to a neutral stand-in without it | ✅ | `js/campaign/roster.js` |
+| 3.10 | The CAMPAIGN view — sheet, ownership wash, banners, army tokens, routes, selection, pan / zoom / click / right-click | ✅ | `js/campaign/view.js` |
+| 3.11 | The campaign overlay — bar, contextual province / army panel, season report, faction picker | ✅ | `js/ui/campaign.js` |
+| 3.12 | Campaign i18n keys in both tables + font subset rebuild | ✅ | `js/i18n/*`, `fonts/` |
+| 3.13 | Playwright P3 verification (121 assertions) | ✅ | `.verify/sanguo-p3.js` |
+
+### What P3 proves
+
+- the map is a real graph: 57 commanderies, no duplicates, **every one reachable
+  from every other**, adjacency symmetric both ways, and a road from 遼東 to
+  交趾 that costs a campaign's worth of seasons to walk
+- province territory is Voronoi over the seats, so it is contiguous, every
+  point of the empire belongs to exactly one commandery, and "what did I click"
+  is "which seat is nearest" rather than a point-in-polygon test
+- 194 opens with every commandery held, every warlord holding their own
+  capital, every banner resolving to a real flag preset, and every faction with
+  something in the field rather than only walls
+- the 200-general almanac is wired in: leaders and rosters are all real ids,
+  **no general serves two warlords**, stats come from the almanac rather than
+  the stand-in, a `BattleSetup` snapshot resolves the name and puts a mounted
+  hero in the cavalry, and a warlord the almanac has no entry for starts alone
+  rather than broken
+- the opening position staffs each army to the three-general cap and seats a
+  governor at home wherever there are officers to spare; **nobody is in two
+  places at once**, and Assign moves them between roster, stack and seat
+- every order refuses what it should: someone else's province, someone else's
+  stack, someone else's officer, over the recruit cap, past the garrison floor,
+  a route that does not exist, a development already at its limit — and a
+  refused march leaves the current one running
+- **ten seasons pass with no invariant broken**: no negative treasury, garrison
+  or stack, no loyalty outside 0-100, no army standing anywhere but a real
+  province, and no army stepping to a province it is not adjacent to
+- the AI marches, fights and takes ground, on the same order set the player has
+- **determinism**: the same seed plays out to the same digest over every
+  province, army and treasury eight seasons in; a different seed does not
+- the World-phase autosave writes, the slot labels itself with the turn, year
+  and warlord, and a reload restores the campaign exactly — treasury, armies,
+  a marked garrison and its walls — and **keeps taking turns afterwards**
+- the faction picker builds a campaign from the menu, and leaving the view
+  releases every listener and drops its reference to the campaign
+- P1's skirmish still deploys its 2,000 men and still tears down cleanly
+
+---
+
 ## Core changes made for P1
 
 `AGENTS.md` allows core changes that stay scenario-agnostic. Three were needed;
@@ -335,6 +400,42 @@ live in `SANGUO-DESIGN.md` §11.)
     full figure. This preserves the product look where the renderer has budget
     and spends the abstraction only where the 4,000-figure cap needs it.
 
+17. **Administration is immediate; only movement takes seasons.** §4.1 pins the
+    four phases but not which orders resolve when. Recruit, Raise, Develop and
+    Assign are local acts and land the moment they are given, so the player
+    phase answers while you are still thinking; March is the only order that
+    resolves over turns, because distance is the whole point of it.
+18. **Who serves whom is campaign data, not almanac data.** The general
+    almanac's own `faction` field is a *culture* — `shu` / `wei` / `wu` /
+    `other` — which is what a portrait and a sash key off, and is a different
+    question from who 陶謙 has on his staff in 194. The answer lives in
+    `ZS.data.factions[].roster` and is read through `ZS.Roster.forFaction()`.
+19. **`js/campaign/roster.js` is a new file not in the §9 file plan.** The
+    general model (`general.js`) and the almanac are P5's RPG work and were
+    built on a separate branch. P3 still had to *refer* to generals, so it
+    refers to them through one seam that reads whatever is loaded — the
+    almanac, a P5 `ZS.General` derived read, or a flat neutral stand-in. That
+    is what let both branches land without either editing the other's files.
+20. **Province territory is Voronoi, not hand-drawn blobs.** Cells are the map
+    rectangle clipped by the perpendicular bisector against every other seat,
+    built once. It buys three things a hand-drawn blob would not: territory is
+    contiguous, every point belongs to exactly one commandery, and hit-testing
+    is "nearest seat" instead of point-in-polygon.
+21. **The campaign map is drawn in two halves.** The static sheet — paper,
+    rivers, hills, borders, routes — is pre-rendered into an offscreen canvas
+    with the boil frozen, the way `js/app.js` pre-renders its paper wash,
+    because a map is a drawn object rather than a live scene. Ownership,
+    banners, tokens and selection draw per frame and keep their shimmer.
+22. **`ZS.CampaignMap.build()` runs at load, not on first use.** Every lookup
+    answers `null` until it has run, and the faction picker reached the map
+    before anything had built it — a null province, and a picker that silently
+    rendered nothing. Building at load is a few milliseconds and removes the
+    whole class.
+23. **P3's auto-resolve is provisional but its shape is not.** The arithmetic
+    in `js/campaign/autoresolve.js` is untuned; the record it returns is the
+    §4.3 `BattleResult`, the same one a played-out battle will return. P4 tunes
+    numbers rather than inventing a contract.
+
 ---
 
 ## Gotchas for the next session
@@ -344,7 +445,7 @@ live in `SANGUO-DESIGN.md` §11.)
   sanguo files only:
 
   ```bash
-  node node_modules/oxfmt/bin/oxfmt js/app.js js/text.js js/store js/auth js/save js/i18n js/ui js/fonts
+  node node_modules/oxfmt/bin/oxfmt js/app.js js/text.js js/store js/auth js/save js/i18n js/ui js/fonts js/figure js/battle js/campaign js/scenarios/sanguo.js
   ```
 
   `node node_modules/oxlint/bin/oxlint js/` over everything is safe.
@@ -353,6 +454,12 @@ live in `SANGUO-DESIGN.md` §11.)
 - Chromium keeps `localStorage` working on `file://`, so a double-clicked page
   gets real `LocalStore`, not the memory fallback (the verify script asserts
   both paths).
+- **Class bodies take no trailing commas.** `ZS.Campaign` is a `class`, unlike
+  most of this codebase's object-literal modules; a method pasted in with the
+  object-literal `},` is a syntax error that takes the whole file — and
+  therefore the campaign — off the page with nothing but an `undefined` to show
+  for it. `node -e 'new Function(require("fs").readFileSync(f,"utf8"))'` is the
+  quickest way to find it.
 
 ## Open / blocked
 
@@ -465,6 +572,39 @@ Every one of these also presented as "the battle stalls":
    goal's field. Every goal change goes through `_setGoal()` now, which
    rebuilds and records whether the goal is reachable at all.
 
+### Found while building P3
+
+Neither was a P3 bug. Both were already shipping, and both were invisible
+because the thing that should have complained was looking somewhere else.
+
+20. **`ZS.flag.forFaction(5)` and `(6)` returned `undefined`.** They looked up
+    `PRESETS.liu_biao` and `PRESETS.liu_zhang`, which only ever existed in
+    `NAMED` — the colour table — and never in `PRESETS`. The function is
+    documented as what the campaign-pick panel uses, so P3 was the first thing
+    to call it. `plant()` returns early on a falsy flag, which is exactly why
+    it had never thrown.
+21. **120 Han glyphs the game already drew were outside the shipped subset.**
+    `tools/subset-font.py` harvested text from `js/i18n/*`,
+    `js/campaign/data/*` and `index.html`. But `js/art/flag.js` draws a house
+    glyph on every banner and `js/figure/portrait.js` carries general names —
+    85 and 66 characters respectively, none of them in the harvest. They fell
+    back to system kai on every page, and `--check` reported the subset
+    complete because it was asking the same narrow question. This is
+    `ISSUES.md` #2's exact failure mode, already happening. The globs now cover
+    every file that can draw text, which took the subset from 558 to 1,018
+    glyphs.
+
+### Found while wiring P3 to the almanac
+
+22. **The faction picker rendered nothing, silently.** `showPick()` reads
+    `ZS.CampaignMap.province(fd.capital).name` to label each card, and nothing
+    had built the map yet — every other path into the campaign goes through
+    `ZS.Campaign.create()`, whose constructor builds it as a side effect. The
+    picker threw on a null province inside a click handler, so the panel was
+    created, emptied, and left empty with no error anywhere the suite was
+    looking. The map builds at load now, and the suite walks the picker.
+
+
 ## Session log
 
 - **2026-08-30** — read `SANGUO-DESIGN.md`; created this file; built P0:
@@ -516,6 +656,23 @@ Every one of these also presented as "the battle stalls":
   actual 180-frame rAF sample held 60.0 fps (p95 16.8 ms, max 17.7 ms), so the
   provisional `FIELD_CAP = 2000` is accepted. Normal 2,000-man fit view remains
   individual, not massed.
+- **2026-08-31 (cont.)** — built P3, the campaign skeleton. 57 Han
+  commanderies and their marching routes, 22 warlords of 194 with banners and
+  opening positions, Voronoi province territory on a pre-rendered paper sheet,
+  army stacks that march and fight, the four-phase season, the player order set
+  and a greedy AI planner, the campaign save section, the map view and its
+  overlay. Two already-shipping bugs fell out on the way: `forFaction()`
+  handing back `undefined` for two factions, and 120 Han glyphs that the flag
+  and portrait modules draw sitting outside the font subset because the
+  harvester never looked at those files. New suite `.verify/sanguo-p3.js`.
+  Then merged the 200-general almanac from `origin/main` and wired it in
+  through `js/campaign/roster.js`: leaders and per-faction rosters validated
+  against it, armies staffed to the three-general cap, governors seated, and
+  Assign moving officers between roster, stack and seat. The merge conflicted
+  only on the two generated font artifacts, which were resolved by rebuilding
+  the subset from the source face — 1,018 glyphs, covering both branches'
+  text. Final: P3 121 / 0, P0 45 / 0, P1 62 / 0, pages 23 / 0,
+  `check-generals` 200 valid. oxlint clean.
 - **2026-08-31** — completed P2 formation tuning. Column is adaptively narrow,
   square is a hollow concentric perimeter with outward facings, and skirmish is
   a bounded staggered loose order. Formation changes assign immediately while

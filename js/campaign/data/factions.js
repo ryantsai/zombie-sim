@@ -17,8 +17,12 @@
      slot      0-7, the figure module's 8-colour sash ramp for battle stickmen
      tint      [r,g,b] for the map wash; wider than the 8-colour ramp on purpose,
                because there are more warlords than sash colours
-     leader    general id — resolved against ZS.data.generals when that roster
-               exists, and safely absent until then (see js/campaign/roster.js)
+     leader    general id into the almanac (js/campaign/data/generals.js);
+               null where the almanac has no entry for that warlord yet
+     roster    the generals who serve this warlord in 194, as almanac ids. The
+               almanac's own `faction` field is a *culture* (shu / wei / wu /
+               other) for portraits and sashes — who serves whom is a campaign
+               question, so it is answered here. Read via ZS.Roster.forFaction()
      capital   province id
      start     { provinces:[id], gold, food, troops } — troops is the total the
                capital and garrisons are seeded from
@@ -32,6 +36,23 @@
   const FACTIONS = [
     {
       id: "cao_cao",
+      roster: [
+        "cao_cao",
+        "xiahou_dun",
+        "xiahou_yuan",
+        "cao_ren",
+        "cao_hong",
+        "cao_chun",
+        "dian_wei",
+        "yue_jin",
+        "li_dian",
+        "yu_jin",
+        "xun_yu",
+        "xun_you",
+        "cheng_yu",
+        "guo_jia",
+        "mao_jie",
+      ],
       name: { "zh-tw": "曹操", en: "Cao Cao" },
       house: { "zh-tw": "曹", en: "Cao" },
       flag: "cao_cao",
@@ -50,6 +71,20 @@
     },
     {
       id: "yuan_shao",
+      roster: [
+        "yuan_shao",
+        "yan_liang",
+        "wen_chou",
+        "qu_yi",
+        "gao_lan",
+        "chunyu_qiong",
+        "tian_feng",
+        "ju_shou",
+        "shen_pei",
+        "yuan_tan",
+        "yuan_xi",
+        "yuan_shang",
+      ],
       name: { "zh-tw": "袁紹", en: "Yuan Shao" },
       house: { "zh-tw": "袁", en: "Yuan" },
       flag: "yuan_shao",
@@ -78,6 +113,7 @@
     },
     {
       id: "yuan_shu",
+      roster: ["yuan_shu", "ji_ling", "qiao_mao"],
       name: { "zh-tw": "袁術", en: "Yuan Shu" },
       house: { "zh-tw": "術", en: "Shu" },
       flag: "yuan_shu",
@@ -96,6 +132,18 @@
     },
     {
       id: "lv_bu",
+      roster: [
+        "lv_bu",
+        "chen_gong",
+        "gao_shun",
+        "zhang_liao",
+        "zang_ba",
+        "wei_xu",
+        "song_xian",
+        "hou_cheng",
+        "zhang_miao",
+        "diao_chan",
+      ],
       name: { "zh-tw": "呂布", en: "Lü Bu" },
       house: { "zh-tw": "呂", en: "Lü" },
       flag: "lv_bu",
@@ -109,6 +157,7 @@
     },
     {
       id: "liu_biao",
+      roster: ["liu_biao", "wen_ping", "huang_zhong", "wei_yan"],
       name: { "zh-tw": "劉表", en: "Liu Biao" },
       house: { "zh-tw": "表", en: "Biao" },
       flag: "liu_biao",
@@ -136,6 +185,16 @@
     },
     {
       id: "liu_bei",
+      roster: [
+        "liu_bei",
+        "guan_yu",
+        "zhang_fei",
+        "jian_yong",
+        "mi_zhu",
+        "mi_fang",
+        "sun_qian",
+        "chen_dao",
+      ],
       name: { "zh-tw": "劉備", en: "Liu Bei" },
       house: { "zh-tw": "備", en: "Bei" },
       flag: "liu_bei",
@@ -149,6 +208,7 @@
     },
     {
       id: "tao_qian",
+      roster: ["tao_qian"],
       name: { "zh-tw": "陶謙", en: "Tao Qian" },
       house: { "zh-tw": "陶", en: "Tao" },
       flag: "tao_qian",
@@ -162,6 +222,16 @@
     },
     {
       id: "sun_ce",
+      roster: [
+        "sun_ce",
+        "zhou_yu",
+        "cheng_pu",
+        "huang_gai",
+        "han_dang",
+        "zhu_zhi",
+        "sun_quan",
+        "sun_yi",
+      ],
       name: { "zh-tw": "孫策", en: "Sun Ce" },
       house: { "zh-tw": "孫", en: "Sun" },
       flag: "sun_ce",
@@ -175,6 +245,7 @@
     },
     {
       id: "liu_zhang",
+      roster: ["liu_zhang", "zhang_ren", "yan_yan", "huang_quan", "wu_yi", "li_yan"],
       name: { "zh-tw": "劉璋", en: "Liu Zhang" },
       house: { "zh-tw": "璋", en: "Zhang" },
       flag: "liu_zhang",
@@ -193,6 +264,7 @@
     },
     {
       id: "zhang_lu",
+      roster: ["zhang_lu"],
       name: { "zh-tw": "張魯", en: "Zhang Lu" },
       house: { "zh-tw": "魯", en: "Lu" },
       flag: "zhang_lu",
@@ -206,6 +278,7 @@
     },
     {
       id: "ma_teng",
+      roster: ["ma_teng", "ma_chao", "ma_dai", "pang_de"],
       name: { "zh-tw": "馬騰", en: "Ma Teng" },
       house: { "zh-tw": "馬", en: "Ma" },
       flag: "ma_teng",
@@ -219,6 +292,7 @@
     },
     {
       id: "han_sui",
+      roster: ["han_sui"],
       name: { "zh-tw": "韓遂", en: "Han Sui" },
       house: { "zh-tw": "韓", en: "Han" },
       flag: "han_sui",
@@ -232,6 +306,7 @@
     },
     {
       id: "gongsun_zan",
+      roster: ["gongsun_zan", "zhao_yun"],
       name: { "zh-tw": "公孫瓚", en: "Gongsun Zan" },
       house: { "zh-tw": "瓚", en: "Zan" },
       flag: "gongsun_zan",
@@ -245,6 +320,7 @@
     },
     {
       id: "gongsun_du",
+      roster: ["gongsun_du", "gongsun_kang"],
       name: { "zh-tw": "公孫度", en: "Gongsun Du" },
       house: { "zh-tw": "度", en: "Du" },
       flag: "gongsun_du",
@@ -258,6 +334,7 @@
     },
     {
       id: "kong_rong",
+      roster: ["kong_rong"],
       name: { "zh-tw": "孔融", en: "Kong Rong" },
       house: { "zh-tw": "孔", en: "Kong" },
       flag: "kong_rong",
@@ -271,6 +348,7 @@
     },
     {
       id: "zhang_yang",
+      roster: ["zhang_yang"],
       name: { "zh-tw": "張楊", en: "Zhang Yang" },
       house: { "zh-tw": "楊", en: "Yang" },
       flag: "zhang_yang",
@@ -284,12 +362,13 @@
     },
     {
       id: "zhang_yan",
+      roster: [],
       name: { "zh-tw": "張燕", en: "Zhang Yan" },
       house: { "zh-tw": "燕", en: "Yan" },
       flag: "zhang_yan",
       slot: 4,
       tint: [90, 80, 80],
-      leader: "zhang_yan",
+      leader: null,
       capital: "shangdang",
       start: { provinces: ["shangdang"], gold: 180, food: 500, troops: 3600 },
       playable: false,
@@ -297,12 +376,23 @@
     },
     {
       id: "han_court",
+      roster: [
+        "li_jue",
+        "guo_si",
+        "fan_chou",
+        "xu_rong",
+        "zhang_ji",
+        "zhang_xiu",
+        "hu_che_er",
+        "huangfu_song",
+        "zhu_jun",
+      ],
       name: { "zh-tw": "漢廷", en: "Han Court" },
       house: { "zh-tw": "漢", en: "Han" },
       flag: "han_imperial",
       slot: 1,
       tint: [150, 60, 66],
-      leader: null,
+      leader: "li_jue",
       capital: "changan",
       start: { provinces: ["changan", "hongnong", "luoyang"], gold: 500, food: 1200, troops: 5600 },
       playable: false,
@@ -310,6 +400,7 @@
     },
     {
       id: "liu_yao",
+      roster: ["liu_yao", "taishi_ci"],
       name: { "zh-tw": "劉繇", en: "Liu Yao" },
       house: { "zh-tw": "繇", en: "Yao" },
       flag: "liu_yao",
@@ -323,6 +414,7 @@
     },
     {
       id: "wang_lang",
+      roster: ["wang_lang"],
       name: { "zh-tw": "王朗", en: "Wang Lang" },
       house: { "zh-tw": "朗", en: "Lang" },
       flag: "wang_lang",
@@ -336,6 +428,7 @@
     },
     {
       id: "yan_baihu",
+      roster: ["yan_baihu"],
       name: { "zh-tw": "嚴白虎", en: "Yan Baihu" },
       house: { "zh-tw": "虎", en: "Hu" },
       flag: "yan_baihu",
@@ -349,12 +442,13 @@
     },
     {
       id: "shi_xie",
+      roster: [],
       name: { "zh-tw": "士燮", en: "Shi Xie" },
       house: { "zh-tw": "士", en: "Shi" },
       flag: "jiao",
       slot: 6,
       tint: [96, 130, 96],
-      leader: "shi_xie",
+      leader: null,
       capital: "nanhai",
       start: { provinces: ["nanhai", "jiaozhi"], gold: 420, food: 1200, troops: 2800 },
       playable: false,

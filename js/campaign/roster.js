@@ -9,14 +9,19 @@
    So the campaign never touches a general record directly. It stores ids and
    asks here, and this file answers from whatever is loaded:
 
-     ZS.data.generals present  -> the real roster
-     ZS.General present        -> its derived stats win over the plain fields
-     neither                   -> a neutral stand-in, so a campaign still runs
+     ZS.Generals present       -> the 200-person almanac (js/campaign/data/generals.js)
+     ZS.data.generals present  -> the same thing under the §9 name
+     ZS.General present        -> its derived read wins over the plain fields
+     none of them              -> a neutral stand-in, so a campaign still runs
 
-   That is the whole point: dropping the roster in lights the campaign up with
-   no edit to map.js / army.js / turn.js / ai.js. The stand-in is deliberately
-   flat (all 60s) rather than random, so a campaign played without the roster
-   is boring but never wrong.
+   The stand-in is deliberately flat (all 60s) rather than random, so a
+   campaign played without the almanac is boring but never wrong.
+
+   **Which generals serve which warlord is campaign data, not almanac data.**
+   The almanac's own `faction` field is a *culture* — "shu", "wei", "wu",
+   "other" — which is what a portrait and a sash need, and is not the same
+   question as who 陶謙 has on his staff in 194. That answer lives in
+   `ZS.data.factions[].roster`, and `forFaction()` reads it from there.
 
    `snapshot(id)` returns the §4.3 general shape that BattleSetup wants, which
    is the one place P4 has to agree with P5. */
@@ -27,14 +32,22 @@
   const NEUTRAL = { wu: 60, tong: 60, zhi: 60, zheng: 60 };
   const STAT_KEYS = ["wu", "tong", "zhi", "zheng"];
 
-  /* The almanac is an array or a keyed object depending on how P5 writes it;
-     both are indexed once, lazily, and re-indexed if the roster shows up after
-     boot (a verify script may inject one). */
+  /* The almanac ships as `ZS.Generals` (an ordered ALL plus a CATALOGUE index);
+     §9 named the file's export `ZS.data.generals`. Accept either, as an array
+     or a keyed object. Indexed once, lazily, and re-indexed if the roster shows
+     up after boot (a verify script may inject one). */
   let index = null;
   let indexedFrom = null;
 
+  function source() {
+    if (ZS.Generals && (ZS.Generals.ALL || ZS.Generals.CATALOGUE)) {
+      return ZS.Generals.ALL || ZS.Generals.CATALOGUE;
+    }
+    return (ZS.data && ZS.data.generals) || null;
+  }
+
   function build() {
-    const src = ZS.data && ZS.data.generals;
+    const src = source();
     if (src === indexedFrom && index) return index;
     indexedFrom = src;
     index = new Map();
@@ -93,14 +106,44 @@
       return out || NEUTRAL;
     },
 
-    /* Every general the almanac files under this faction. Empty until the
-       roster lands; the campaign seeds leaders from ZS.data.factions instead,
-       so an empty answer is not a broken campaign. */
+    /* Who serves this warlord at the start, as ids. Read from the campaign's
+       own faction data, then filtered against the almanac so a name that is
+       not (yet) in the roster is simply absent rather than a broken record. */
     forFaction(factionId) {
+      const fd = (ZS.data.factions || []).find((f) => f.id === factionId);
+      if (!fd || !fd.roster) return [];
+      const idx = build();
+      if (!idx.size) return fd.roster.slice();
+      return fd.roster.filter((id) => idx.has(id));
+    },
+
+    /* The almanac's own grouping — a *culture* ("shu" / "wei" / "wu" /
+       "other"), which is what a portrait and a sash key off. Not the same
+       question as forFaction(); kept separate on purpose. */
+    byCulture(culture) {
       const out = [];
-      for (const g of build().values()) if (g.faction === factionId) out.push(g.id);
+      for (const g of build().values()) if (g.faction === culture) out.push(g.id);
       out.sort();
       return out;
+    },
+
+    /* Courtesy name (字) when the almanac carries one — 雲長 rather than 關羽,
+       which is how a lord would actually address them. */
+    style(id) {
+      const g = this.get(id);
+      return g && g.style ? ZS.i18n.t(g.style) : "";
+    },
+
+    /* A one-line read for the campaign panel. */
+    line(id) {
+      const s = this.stats(id);
+      return ZS.i18n.t("campaign.general.line", {
+        name: this.name(id),
+        wu: s.wu,
+        tong: s.tong,
+        zhi: s.zhi,
+        zheng: s.zheng,
+      });
     },
 
     /* The §4.3 BattleSetup general snapshot. P4 hands this straight to
@@ -116,7 +159,14 @@
         wu: s.wu,
         tong: s.tong,
         zhi: s.zhi,
-        unitType: (g && g.unitType) || o.unitType || "dao",
+        /* The almanac describes a general as a mounted hero model rather than
+           by unit type; a mounted general leads from the cavalry. P5 may say
+           so directly with `unitType`, and that wins. */
+        unitType:
+          (g && g.unitType) ||
+          (g && g.model && g.model.mounted ? "cav" : null) ||
+          o.unitType ||
+          "dao",
       };
     },
 

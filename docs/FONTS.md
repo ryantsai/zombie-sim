@@ -13,10 +13,20 @@ The game's brush-kai face (`SANGUO-DESIGN.md` §6.3).
 ### What is committed here
 
 `lxgw-wenkai-tc.subset.woff2` — a glyph subset of the Regular weight, cut to
-exactly the characters the game can render. The full font is far too large to
-ship, and the game's vocabulary is bounded, so `tools/subset-font.py` harvests
-every character in `js/i18n/*.js`, `js/campaign/data/*.js` and `index.html`
-and cuts the font to those.
+exactly the characters the game can render (1,018 of them as of P3, ~285 KB).
+The full font is far too large to ship, and the game's vocabulary is bounded,
+so `tools/subset-font.py` harvests every character in every file that can put
+text on screen and cuts the font to those.
+
+**That list is maintained by hand**, in `TEXT_GLOBS` at the top of the script,
+and it is the whole correctness of this system. It covers the string tables,
+the campaign content, the art modules that draw Han characters directly
+(`js/art/*.js`, `js/figure/*.js` — a flag's house glyph, a general's name), the
+UI, the sanguo scenario, and `index.html`. Between P7 and P3 it did *not* cover
+the art modules, and 120 glyphs the game drew on every page silently fell back
+to system kai while `--check` reported the subset complete. **A new module that
+draws a Han character must be added to `TEXT_GLOBS`, or the gate passes while
+the page is wrong** (`ISSUES.md` #2).
 
 The same bytes are also committed as `js/fonts/subset-data.js`, a `data:` URI.
 That exists because a `@font-face` whose `src` is a `file://` URL is a
@@ -26,8 +36,8 @@ data URI, a double-clicked `index.html` would silently drop to system kai.
 
 ### Rebuilding
 
-Whenever `js/i18n/*.js` or `js/campaign/data/*.js` gains new text, new glyphs
-fall outside the subset and quietly render in the fallback face. Check with:
+Whenever any harvested file gains new text, new glyphs fall outside the subset
+and quietly render in the fallback face. Check with:
 
 ```bash
 python tools/subset-font.py --check

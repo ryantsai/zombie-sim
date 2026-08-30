@@ -223,6 +223,14 @@
       );
       box.appendChild(row(t("campaign.prov.garrison"), ZS.i18n.n(pr.garrison)));
       box.appendChild(row(t("campaign.prov.loyalty"), pr.loyalty + "%"));
+      if (pr.owner) {
+        box.appendChild(
+          row(
+            t("campaign.prov.governor"),
+            pr.governor ? ZS.Roster.line(pr.governor) : t("campaign.general.none"),
+          ),
+        );
+      }
       if (mine) {
         box.appendChild(row(t("campaign.prov.income"), ZS.i18n.n(camp.income(id))));
         box.appendChild(row(t("campaign.prov.food"), ZS.i18n.n(camp.foodYield(id))));
@@ -298,6 +306,36 @@
       ]);
       box.appendChild(el("div", { class: "clabel", text: t("campaign.orders") }));
       box.appendChild(el("div", { class: "crow" }, [num, acts]));
+
+      /* Appoint a governor from whoever is not already leading a stack or
+         minding another seat. Hidden entirely when no almanac is loaded —
+         a list of stand-ins would be worse than no list. */
+      const free = this.idleGenerals(camp);
+      if (ZS.Roster.available() && (free.length || pr.governor)) {
+        const seats = el("div", { class: "cgrid" });
+        if (pr.governor) {
+          seats.appendChild(
+            btn(
+              "cchip on",
+              t("campaign.general.dismiss", { name: ZS.Roster.name(pr.governor) }),
+              () => {
+                const res = ZS.Turn.assign(camp, pr.governor, null);
+                this.notify(res, "campaign.msg.dismissed");
+              },
+            ),
+          );
+        }
+        for (const gid of free.slice(0, 8)) {
+          seats.appendChild(
+            btn("cchip", ZS.Roster.line(gid), () => {
+              const res = ZS.Turn.assign(camp, gid, { govern: id });
+              this.notify(res, "campaign.msg.appointed", { name: ZS.Roster.name(gid) });
+            }),
+          );
+        }
+        box.appendChild(el("div", { class: "clabel", text: t("campaign.prov.appoint") }));
+        box.appendChild(seats);
+      }
       return box;
     },
 
@@ -324,9 +362,10 @@
       );
 
       if (a.generals.length) {
-        box.appendChild(
-          row(t("campaign.army.generals"), a.generals.map((g) => ZS.Roster.name(g)).join("、")),
-        );
+        box.appendChild(el("div", { class: "clabel", text: t("campaign.army.generals") }));
+        for (const gid of a.generals) {
+          box.appendChild(row(ZS.Roster.name(gid), statLine(gid), "gen"));
+        }
       }
 
       if (ZS.Army.isMarching(a)) {
@@ -359,7 +398,43 @@
       ]);
       box.appendChild(el("div", { class: "clabel", text: t("campaign.army.orderHint") }));
       box.appendChild(acts);
+
+      /* Assign / release. Three is the cap (§4.1), and a general is in exactly
+         one place — the order layer enforces both, this just offers them. */
+      if (ZS.Roster.available()) {
+        const chips = el("div", { class: "cgrid" });
+        for (const gid of a.generals) {
+          chips.appendChild(
+            btn("cchip on", t("campaign.general.release", { name: ZS.Roster.name(gid) }), () => {
+              const res = ZS.Turn.assign(camp, gid, null);
+              this.notify(res, "campaign.msg.released", { name: ZS.Roster.name(gid) });
+            }),
+          );
+        }
+        if (a.generals.length < ZS.Army.MAX_GENERALS) {
+          for (const gid of this.idleGenerals(camp).slice(0, 8)) {
+            chips.appendChild(
+              btn("cchip", ZS.Roster.line(gid), () => {
+                const res = ZS.Turn.assign(camp, gid, { army: a.id });
+                this.notify(res, "campaign.msg.assigned", { name: ZS.Roster.name(gid) });
+              }),
+            );
+          }
+        }
+        if (chips.childNodes.length) {
+          box.appendChild(el("div", { class: "clabel", text: t("campaign.army.assign") }));
+          box.appendChild(chips);
+        }
+      }
       return box;
+    },
+
+    /* The player's officers who are neither leading a stack nor holding a
+       seat — the pool every Assign order draws from. */
+    idleGenerals(camp) {
+      const f = camp.player();
+      if (!f) return [];
+      return f.generals.filter((gid) => !camp.isBusy(gid, null));
     },
 
     /* ---- the turn --------------------------------------------------------- */
@@ -441,6 +516,11 @@
       return res;
     },
   };
+
+  function statLine(gid) {
+    const st = ZS.Roster.stats(gid);
+    return st.wu + " / " + st.tong + " / " + st.zhi + " / " + st.zheng;
+  }
 
   function sum(losses) {
     let n = 0;

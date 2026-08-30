@@ -15,7 +15,7 @@ wobble stable per render.
 | Module | What it draws | Read first if you need… |
 |---|---|---|
 | `js/figure/figure.js` | the stickman baseline + 12 unit types + rank marks | …to add a new unit type or change a silhouette |
-| `js/figure/portrait.js` | headshot portraits of the 23 named generals | …a general's face in the menu or after-action card |
+| `js/figure/portrait.js` | procedural headshot portraits of all 200 generals | …a general's face in the roster or after-action card |
 | `js/art/flag.js` | flags — chrome (frame) + text (mark) as independent parts | …a faction banner, a province chip, or a planted battle marker |
 | `js/art/environment.js` | trees, hills, rivers, camps, walls, gates, bridges, ruins, roads | …the look of a battle field or a campaign map |
 | `js/art/ui.js` | the menu's title banner, save-slot thumbnails, button glyphs | …a new chrome icon or save-slot art |
@@ -58,19 +58,20 @@ exception: its broad body, howdah, blanket, tusks, and trunk are the unit read.
 
 ### 1.2 Rank tiers (§7.4)
 
-A `tier` field on the agent scales the body. The same drawing at four
-sizes — no per-tier artwork.
+A `tier` field on the agent scales ordinary bodies. Trooper through officer
+reuse the same foot/rider drawing; a named general deliberately switches to
+the catalogue's mounted hero recipe at 1.5×.
 
 | Tier | Scale | Marks added on the marks layer |
 |---|---|---|
 | 兵 TROOPER | 1.00 | — |
 | 什長 / 隊長 NCO | 1.05 | a small `wpoly` flag on the back |
 | 校尉 OFFICER | 1.12 | flag + a coloured `wline` sash across the torso |
-| 將 GENERAL | 1.25 | sash + **aura ring** (`wcirc` at the faction colour, radius from `tong`) + **name banner** (a vertical pole + `wpoly` cloth with the general's name boiled on it) |
+| 將 GENERAL | **1.50** | always-mounted hero model + sash + **aura ring** (`wcirc` at the faction colour, radius from `tong`) + **name banner** (a vertical pole + `wpoly` cloth with the general's name boiled on it) |
 
-`drawMarks` is the layer that adds all of the above; `drawFoot` draws
-the body, then `drawMarks` decorates. The two are always called
-together, in that order.
+`drawMarks` is the layer that adds all of the above. The scenario draws either
+`drawFoot` / `drawRider`, or `drawGeneral` for a named general, then decorates
+that body with `drawMarks`.
 
 ### 1.3 Unit types (§7.3)
 
@@ -372,8 +373,8 @@ settings panel, the load-game panel, the after-action card.
 
 ## 5. Portraits (`js/figure/portrait.js`)
 
-A small system for the headshot portraits of the 23 named generals,
-drawn at 60–120 px. Used outside the battle (per §7.5) — the menu's
+A small system for the headshot portraits of all 200 almanac generals,
+drawn at 60–120 px. Used outside the battle — the menu's
 "Choose your warlord" panel, the after-action card, the save-slot
 icon, the campaign roster.
 
@@ -381,9 +382,9 @@ icon, the campaign roster.
 
 Each portrait is a combination of:
 
-- **headgear** — `turban` (the cloth wrap, the common one), `crown` (the
-  flat-top 進賢冠), `helmet` (a dome with side flaps + a red tassel),
-  `band` (a thin scholarly band).
+- **headgear** — the common `turban` / `crown` / `helmet` / `band`, plus hero
+  silhouettes such as `hood`, `scholar`, `silver_helmet`, `horn_helmet`,
+  `phoenix`, `yellow_turban`, `feather_crown`, and `ornate_crown`.
 - **beard** — `long` (the famous 關羽 / 張飛 long beard), `chin` (a
   shorter scholarly one), `goatee` (a small tuft), `moustache` (a
   sweeping Cao Cao style).
@@ -392,32 +393,39 @@ Each portrait is a combination of:
   `wild`, `aged`, `scholarly`. The expression drives the brow tilt and
   any extra marks (a scar for `wild` / `aged`).
 
-All four pieces take a deterministic `seed` (hashed from the general's
+Features such as 關羽's red face, 劉備's long ears, 夏侯惇's eye patch,
+孫權's jade eyes, white brows, ribbons and forehead seals add one more readable
+stroke without abandoning the shared body. All pieces take a deterministic `seed` (hashed from the general's
 name) so the portrait is stable per render.
 
 ### 5.2 The catalogue
 
-23 generals: Liu Bei, Guan Yu, Zhang Fei, Zhao Yun, Ma Chao, Huang
-Zhong, Fa Zheng (Shu); Cao Cao, Xiahou Dun, Xiahou Yuan, Zhang Liao,
-Xu Chu, Zhou Yu, Sima Yi (Wei); Sun Quan, Sun Ce, Zhou Tai, Gan Ning,
-Lu Xun (Wu); Yuan Shao, Lü Bu, Dian Wei, Hua Tuo (other).
+The catalogue is `ZS.Generals.ALL`: exactly 200 commonly recognised historical
+and Romance/Sangokushi figures across Shu, Wei/Jin, Wu, Han warlords, the
+Yellow Turbans and southern powers. Every record owns four base stats, skills,
+equipment ids, a portrait recipe and a mounted 1.5× battlefield model. Thirty-
+eight story-famous figures have hand-authored appearance recipes; the rest use
+role-aware deterministic combinations from the same visual vocabulary.
 
 `ZS.portrait.get(id)` returns the record. `ZS.portrait.draw(c, g, x,
 y, w, h, t)` draws the headshot.
 
 ### 5.3 Adding a new portrait
 
-1. Add a record to `ZS.portrait.CATALOGUE`:
+1. Add a source row to `js/campaign/data/generals.js`. The almanac builds the
+   portrait and model recipes automatically; use `ICONIC` only when a known
+   story silhouette needs hand-authored treatment:
    ```js
-   my_general: {
-     name:  { "zh-tw": "名", "en": "Name" },
-     style: { "zh-tw": "字", "en": "zi" },
-     faction: 2,        // the FACTIONS ramp index
-     wu: 80, tong: 80, zhi: 70, zheng: 60,
-     portrait: { cap: "crown", beard: "long", cue: "scholarly" },
-   },
+   ["my_general", "名", "Name", "字", "Zi", "shu",
+     80, 80, 70, 60, "strategist"]
+
+   ICONIC.my_general = [
+     "crown", "long", "scholarly", // portrait
+     "feather_fan", "white", "blue", "crane_robe" // field model
+   ];
    ```
-2. Use it: `ZS.portrait.draw(c, ZS.portrait.get("my_general"), ...)`.
+2. Run `node tools/check-generals.js`, then use it with
+   `ZS.portrait.draw(c, ZS.portrait.get("my_general"), ...)`.
 
 ---
 
@@ -526,7 +534,7 @@ js/figure/figure.js        — ZS.figure
 js/figure/portrait.js     — ZS.portrait
   draw(c, g, x, y, w, h, t)   one headshot
   get(id)                     name -> record
-  CATALOGUE                   23 named generals
+  CATALOGUE                   alias of the 200-person ZS.Generals catalogue
 
 js/art/flag.js            — ZS.flag
   draw(c, flag, x, y, w, h, t)  one flag
@@ -550,6 +558,6 @@ Verification scripts:
 
 ```
 .verify/flag-grid.js        — render the full flag catalogue + planted + bearer + forFaction
-.verify/portrait-grid.js    — render all 23 portraits
+.verify/generals-portraits.png — generated 200-portrait contact sheet
 .verify/sanguo-shot.js      — screenshot the menu (both locales)
 ```

@@ -91,7 +91,11 @@
           id: f.id,
           gold: f.start.gold,
           food: f.start.food,
-          generals: f.leader ? [f.leader] : [],
+          /* The staff this warlord starts with, filtered to names the almanac
+             actually carries (js/campaign/roster.js). A warlord the almanac has
+             no entry for simply starts alone — a thin campaign, never a broken
+             record. */
+          generals: ZS.Roster.forFaction(f.id),
           alive: held.length > 0,
           isPlayer: f.id === playerFactionId,
         };
@@ -111,12 +115,15 @@
             GARRISON_MIN,
             Math.round((garrisonPool * pd.size) / Math.max(1, weight)),
           );
-          if (id === f.capital) pr.governor = f.leader || null;
         }
         if (held.length && fieldShare > 0) {
           const a = camp.raiseArmy(f.id, f.capital, fieldShare);
-          if (a && f.leader) ZS.Army.assign(a, f.leader);
+          if (a) camp.staffArmy(a, f);
         }
+        /* Whoever is left over and best at 政 keeps the books at home. A lord
+           who rode out does not also govern — §4.1 is explicit that a general
+           off marching is not a governor. */
+        if (held.length) camp.appointGovernor(f.capital);
       }
 
       camp.recount();
@@ -248,6 +255,59 @@
       return a;
     }
 
+    /* Put the lord and their two ablest lieutenants on this stack. The lord
+       rides first because command loss is the shock the battle layer models
+       (P2's general-death shock), so who is carrying the banner matters. */
+    staffArmy(a, fd) {
+      const pool = this.factions[a.faction] ? this.factions[a.faction].generals : [];
+      const order = pool.slice().sort((x, y) => {
+        if (fd && x === fd.leader) return -1;
+        if (fd && y === fd.leader) return 1;
+        const sx = ZS.Roster.stats(x),
+          sy = ZS.Roster.stats(y);
+        return sy.tong + sy.wu - (sx.tong + sx.wu);
+      });
+      for (const gid of order) {
+        if (a.generals.length >= ZS.Army.MAX_GENERALS) break;
+        if (this.isBusy(gid, a.id)) continue;
+        ZS.Army.assign(a, gid);
+      }
+      return a;
+    }
+
+    /* The best remaining administrator takes the seat. */
+    appointGovernor(pid) {
+      const pr = this.provinces[pid];
+      if (!pr || !pr.owner) return null;
+      const pool = this.factions[pr.owner] ? this.factions[pr.owner].generals : [];
+      let best = null,
+        bz = -1;
+      for (const gid of pool) {
+        if (this.isBusy(gid, null)) continue;
+        const z = ZS.Roster.stats(gid).zheng;
+        if (z > bz) {
+          bz = z;
+          best = gid;
+        }
+      }
+      pr.governor = best;
+      return best;
+    }
+
+    /* Is this general already doing something? `exceptArmy` lets a stack ask
+       without tripping over itself. A general is in exactly one place — an
+       army, a governor's seat, or the roster (§4.1's `location`). */
+    isBusy(gid, exceptArmy) {
+      for (const aid in this.armies) {
+        if (aid === exceptArmy) continue;
+        if (this.armies[aid].generals.indexOf(gid) >= 0) return true;
+      }
+      for (const pid in this.provinces) {
+        if (this.provinces[pid].governor === gid) return true;
+      }
+      return false;
+    }
+
     disbandArmy(aid) {
       const a = this.armies[aid];
       if (!a) return false;
@@ -365,9 +425,7 @@
           id: f.id,
           gold: src ? src.gold | 0 : f.start.gold,
           food: src ? src.food | 0 : f.start.food,
-          generals:
-            (src && Array.isArray(src.generals) ? src.generals : null) ||
-            (f.leader ? [f.leader] : []),
+          generals: src && Array.isArray(src.generals) ? src.generals : ZS.Roster.forFaction(f.id),
           alive: src ? !!src.alive : false,
           isPlayer: f.id === camp.playerFactionId,
         };
