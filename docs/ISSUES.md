@@ -18,7 +18,7 @@ someone could reasonably trip over.
 | # | Status | Area | Summary |
 |---|---|---|---|
 | [1](#1) | ~~RESOLVED~~ | tooling | ~~`.verify/` is gitignored, so no test suite is committed~~ — suites moved to `test/`, `npm test` |
-| [2](#2) | OPEN | tooling | The font subset can silently fall out of date |
+| [2](#2) | OPEN | tooling | Nothing *forces* the font-subset check to run (the stale-harvest half is fixed) |
 | [3](#3) | OPEN | battle | Battle pacing constants are untuned guesses |
 | [4](#4) | DEFERRED | battle | `open` battlefields are a bare plain — no river, hills or forest |
 | [7](#7) | DEFERRED | structure | Duels still need their §9 file |
@@ -65,42 +65,66 @@ a one-liner if anyone wants one.
 
 ## 2
 
-**OPEN · tooling · the font subset can silently fall out of date**
+**OPEN · tooling · nothing forces the subset check to run**
 
-`fonts/lxgw-wenkai-tc.subset.woff2` is cut to exactly the characters found in
-`js/i18n/*.js`, `js/campaign/data/*.js` and `index.html`. Add a string with a
-new Han character and that glyph falls back to system kai — visibly a different
-face, with no error anywhere.
+`fonts/lxgw-wenkai-tc.subset.woff2` is cut to exactly the characters the game
+can render. Add a string with a new Han character and that glyph falls back to
+system kai — visibly a different face, with no error anywhere.
 
-`python tools/subset-font.py --check` catches it, and `test/sanguo-p0.js`
-runs that check, so it is caught **if someone runs the suite**. Nothing enforces
-it. It has already happened twice.
+### The stale-harvest half is fixed
 
-Once at P1, when the battle strings added 44 glyphs outside the subset. And
-again, invisibly, from P7 until P3: `TEXT_GLOBS` only listed `js/i18n/*.js`,
-`js/campaign/data/*.js` and `index.html`, but `js/art/flag.js` draws a house
-glyph on every banner and `js/figure/portrait.js` carries general names — 120
-characters between them and the other art files, none of them harvested. They
-fell back to system kai on every page while `--check` cheerfully reported the
-subset complete, because the check was asking the same too-narrow question the
-build was. The globs now cover every file that can draw text.
+*Was: the harvest read a hand-kept `TEXT_GLOBS` at the top of
+`tools/subset-font.py`. **That is the shape of this issue to watch for** — the
+check is only as good as the list of places text can live, and that list was
+maintained by hand. It went stale twice. Between P7 and P3 it listed only
+`js/i18n/*.js`, `js/campaign/data/*.js` and `index.html`, while `js/art/flag.js`
+drew a house glyph on every banner and `js/figure/portrait.js` carried general
+names — 120 glyphs falling back to system kai on every page while `--check`
+cheerfully reported the subset complete, because the check was asking the same
+too-narrow question the build was.*
 
-**That is the shape of this issue to watch for.** The check is only as good as
-the list of places text can live, and that list is maintained by hand. A new
-module that draws a Han character and is not in `TEXT_GLOBS` reintroduces the
-whole problem with the gate still green.
+Fixed 2026-08-31. The list is now derived from the page rather than kept beside
+it. `index.html` is the only page that loads the subset — the other three are
+the original sketch pages and use a system stack — so the set of files that can
+put kai on screen is exactly `index.html` plus its `<script src>` tags. That is
+what `sources()` reads.
 
-Rebuilding also needs the ~15 MB source face re-downloaded (deliberately not
-committed — see `FONTS.md`), so the fix is not something a contributor
-can do without going and fetching it.
+```
+python tools/subset-font.py --sources    # 56 files, 1022 glyphs
+```
 
-**Options:** a pre-commit hook running `--check`, or CI. Issue 1 is resolved,
-so the suite is in the repo and `npm test` runs the check — a hook is now a
-one-liner rather than a blocked idea. Left OPEN because nothing *enforces* it
-yet, and because the harvest-glob hazard above cannot be fixed by enforcement
-at all.
+Files are harvested whole, comments included: it over-covers by a handful of
+glyphs and needs no JavaScript parsing, which is the right trade for a check
+whose only real failure mode is a false negative.
 
----
+**It found a live gap immediately.** Four glyphs the old globs never saw —
+`撤楷霞鶩`, from comments in `js/sound.js` and `js/fonts/font.js` — were outside
+the subset. The rebuild is 1,022 glyphs, 287 KB, and the new harvest is a
+verified strict superset of the old one (0 glyphs dropped).
+
+This half can no longer regress by omission: a new module is picked up when its
+`<script>` tag is added, and a module with no tag fails
+`tools/module-manifest.js` instead (issue 14). The two checks close each
+other's blind spot.
+
+### What is still open
+
+Nothing *forces* either to run. `npm test` runs `--check` (via
+`test/sanguo-p0.js`) and now lints first, so a single command covers it — but a
+commit that skips `npm test` still lands a wrong subset silently.
+
+A rebuild is no longer expensive, which changes the arithmetic on this: the
+source face is committed at `assets/fonts/LXGWWenKaiTC-Regular.ttf`, so the
+fix for a failed check is one command with no download. This issue previously
+said the opposite, following `FONTS.md`, which was wrong; both are corrected.
+
+**Options:** a `.githooks/pre-commit` running `npm test` with `core.hooksPath`
+pointed at it, or CI. Both need one opt-in step from whoever clones, so neither
+is truly automatic — which is why this is left as the maintainer's call rather
+than done.
+
+Separately and not a bug: **whether a 15 MB `.ttf` belongs in the history** is
+worth deciding. It packs to 8.8 MB of a 15.0 MiB pack.
 
 ## 3
 

@@ -2,7 +2,7 @@
 """Build the brush-kai glyph subset the game ships (docs/SANGUO-DESIGN.md §6.3).
 
 Dev tooling, same category as oxfmt/oxlint — it is NOT part of running the
-game. Run it whenever js/i18n/*.js or js/campaign/data/*.js gains new text.
+game. Run it whenever any file index.html loads gains new text.
 
     python tools/subset-font.py --source path/to/LXGWWenKaiTC-Regular.ttf
 
@@ -16,8 +16,9 @@ Outputs
                                       double-clicked (file:// refuses a
                                       CORS-mode @font-face fetch)
 
-The character set is harvested from the files that are allowed to hold display
-text, so the subset tracks the game's actual vocabulary instead of a guess.
+The character set is harvested from index.html and every script it loads, so
+the subset tracks the game's actual vocabulary instead of a hand-kept list of
+where text is allowed to live (ISSUES.md #2). `--sources` prints that list.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from __future__ import annotations
 import argparse
 import base64
 import pathlib
+import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -35,24 +37,46 @@ for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
         _stream.reconfigure(encoding="utf-8", errors="replace")
 
-# Every file that may contain player-visible text.
+# Every file that may contain player-visible text — derived, not listed.
 #
-# §6.4 keeps *UI chrome* in js/i18n and *content* in js/campaign/data, but that
-# is not the whole set: the art modules draw Han characters directly — a flag's
-# single house glyph, a general's name on a portrait, a rank mark on a figure —
-# and those need the same coverage. They were missing from this list, so 120
-# glyphs the game was already drawing fell back to system kai with nothing
-# reporting it (ISSUES.md #2, which is exactly this failure mode).
-TEXT_GLOBS = [
-    "js/i18n/*.js",
-    "js/campaign/*.js",
-    "js/campaign/data/*.js",
-    "js/art/*.js",
-    "js/figure/*.js",
-    "js/ui/*.js",
-    "js/scenarios/sanguo.js",
-    "index.html",
-]
+# ISSUES.md #2: this used to be a hand-kept TEXT_GLOBS, and "the check is only
+# as good as the list of places text can live" was the whole hazard. It went
+# stale twice. Between P7 and P3 it did not cover the art modules, and 120
+# glyphs the game drew on every page fell back to system kai while --check
+# cheerfully reported the subset complete, because the check was asking the
+# same too-narrow question the build was.
+#
+# The list is now read from the page itself. index.html is the only page that
+# loads the subset (the other three are the original sketch pages and use a
+# system stack), so what it can render is exactly index.html plus the files in
+# its <script src> tags. Add a module and the harvest picks it up when you add
+# the tag; forget the tag and tools/module-manifest.js fails instead.
+#
+# Files are harvested whole, comments included. That over-covers by a handful
+# of glyphs — the four in this repo are all in comments — and it is worth it
+# for a rule with no false negatives and no parsing.
+PAGE = "index.html"
+
+# Generated, and its header comment would feed its own next build.
+EXCLUDE = {"js/fonts/subset-data.js"}
+
+_SCRIPT_SRC = re.compile(r"""<script[^>]*\ssrc=["']([^"']+)["']""")
+
+
+def sources() -> list[pathlib.Path]:
+    """index.html and every local script it loads, in load order."""
+    page = ROOT / PAGE
+    html = page.read_text(encoding="utf-8")
+    out = [page]
+    for m in _SCRIPT_SRC.finditer(html):
+        rel = m.group(1)
+        if re.match(r"^[a-z]+://", rel) or rel in EXCLUDE:
+            continue
+        path = ROOT / rel
+        if path.exists():
+            out.append(path)
+    return out
+
 
 # Always present regardless of what the tables happen to use today.
 ALWAYS = (
@@ -65,13 +89,11 @@ ALWAYS = (
 
 def harvest() -> set[str]:
     chars: set[str] = set(ALWAYS)
-    seen = 0
-    for pattern in TEXT_GLOBS:
-        for path in sorted(ROOT.glob(pattern)):
-            chars.update(path.read_text(encoding="utf-8"))
-            seen += 1
-    if not seen:
+    files = sources()
+    if len(files) < 2:
         sys.exit("no text sources matched; run this from the repo root")
+    for path in files:
+        chars.update(path.read_text(encoding="utf-8"))
     # Control characters are not glyphs.
     return {c for c in chars if c.isprintable()}
 
@@ -80,8 +102,8 @@ def check(out: pathlib.Path) -> int:
     """Fail if the game's text needs a glyph the built subset does not carry.
 
     §6.3 wants this: an out-of-subset glyph silently falls back to system kai,
-    and we want to know. Run it after touching js/i18n/*.js or
-    js/campaign/data/*.js; it needs only the built subset, not the source font.
+    and we want to know. Run it after touching any file index.html loads; it
+    needs only the built subset, not the source font.
     """
     from fontTools.ttLib import TTFont  # noqa: PLC0415
 
@@ -110,9 +132,21 @@ def main() -> int:
         action="store_true",
         help="verify the existing subset covers every glyph the game uses, and stop",
     )
+    ap.add_argument(
+        "--sources",
+        action="store_true",
+        help="print the files the harvest reads (derived from index.html), and stop",
+    )
     ap.add_argument("--out", default="fonts/lxgw-wenkai-tc.subset.woff2")
     ap.add_argument("--data-js", default="js/fonts/subset-data.js")
     args = ap.parse_args()
+
+    if args.sources:
+        files = sources()
+        for p in files:
+            print(p.relative_to(ROOT).as_posix())
+        print(f"{len(files)} files, {len(harvest())} glyphs")
+        return 0
 
     try:
         from fontTools import subset  # noqa: PLC0415
