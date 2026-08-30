@@ -43,7 +43,7 @@
     NCO = 1,
     OFFICER = 2,
     GENERAL = 3;
-  const TIER_SCALE = [1, 1.05, 1.12, 1.25];
+  const TIER_SCALE = [1, 1.05, 1.12, 1.5];
 
   /* Faction ramp (§7.2). Assigned at campaign start; the player's faction
      always takes slot 0. Used as a low-alpha wash plus the ink line. */
@@ -77,6 +77,40 @@
     { x: 0, y: 0 },
     { x: 0, y: 0 },
   ];
+  const HERO_BLADE = [
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+  ];
+  const HERO_FAN = [
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+  ];
+  const MOUNT_WASH = {
+    white: "rgba(217,211,192,0.72)",
+    gray: "rgba(132,132,124,0.42)",
+    black: "rgba(48,43,39,0.55)",
+    bay: "rgba(121,78,54,0.42)",
+    chestnut: "rgba(151,78,48,0.4)",
+    red_hare: "rgba(160,55,39,0.5)",
+    shadow_runner: "rgba(40,44,49,0.58)",
+    hex_mark: "rgba(174,145,104,0.46)",
+  };
+  const ROBE_WASH = {
+    green: "rgba(45,122,65,0.78)",
+    red: "rgba(150,54,44,0.76)",
+    blue: "rgba(70,96,150,0.76)",
+    white: "rgba(190,187,170,0.82)",
+    black: "rgba(48,43,39,0.78)",
+    brown: "rgba(120,86,60,0.74)",
+    ochre: "rgba(150,120,60,0.76)",
+    violet: "rgba(120,80,140,0.76)",
+    slate: "rgba(96,104,120,0.76)",
+    crimson: "rgba(110,32,32,0.78)",
+    yellow: "rgba(180,140,45,0.76)",
+  };
   const ARMOR_QUAD = [
     { x: 0, y: 0 },
     { x: 0, y: 0 },
@@ -814,8 +848,12 @@
     c.lineCap = "round";
     const bx = a.x,
       by = a.y - 6;
-    // horse body
-    c.fillStyle = wash(a.faction, a.type === HUBAO ? 0.3 : 0.18);
+    // horse body. Named generals carry their catalogue mount colour; rank
+    // horses remain the low-alpha faction wash.
+    c.fillStyle =
+      a.general && a.model && MOUNT_WASH[a.model.mount]
+        ? MOUNT_WASH[a.model.mount]
+        : wash(a.faction, a.type === HUBAO ? 0.3 : 0.18);
     ZS.wpoly(
       c,
       [
@@ -894,7 +932,10 @@
     drawRiderArmor(c, a, rx, ry, ca, sa, px, py, 1);
     c.strokeStyle = INK;
     ZS.wcirc(c, rx - px * 1.5, ry - 10, 3, s + 33, 0.6);
-    if (a.type === HBOW) {
+    if (a.general && a.model) {
+      drawHeroWeapon(c, a, rx, ry, ca, sa, px, py);
+      drawHeroDetails(c, a, bx, by, rx, ry, ca, sa, px, py);
+    } else if (a.type === HBOW) {
       // bow held across: two short arms and a curve
       ZS.wline(c, rx, ry - 5, rx + ca * 5 - px * 3, ry - 5 + sa * 3, s + 35, 0.7);
       c.lineWidth = 1;
@@ -911,6 +952,201 @@
       c.stroke();
     }
     if (a.type === HUBAO) drawHubaoMarks(c, a, bx, by, ca, sa, px, py, false);
+  }
+
+  /* Named general: always the mounted body, enlarged around its ground anchor.
+     It stays procedural and deterministic — appearance is only a handful of
+     silhouette strokes from the almanac model recipe. */
+  function drawGeneral(c, a, moving) {
+    const scale = (a.model && a.model.scale) || 1.5;
+    c.save();
+    c.translate(a.x, a.y);
+    c.scale(scale, scale);
+    c.translate(-a.x, -a.y);
+    drawRider(c, a, moving);
+    c.restore();
+  }
+
+  function drawHeroWeapon(c, a, rx, ry, ca, sa, px, py) {
+    const style = a.model.weapon || "spear";
+    const sx = rx + ca * 2;
+    const sy = ry - 5 + sa * 2;
+    const reach =
+      style === "great_club" || style === "great_axe" || style === "great_sabre" ? 19 : 24;
+    const ex = sx + ca * reach;
+    const ey = sy + sa * reach;
+    c.strokeStyle = INK;
+    c.fillStyle = ROBE_WASH[a.model.robe] || wash(a.faction, 0.72);
+    c.lineWidth = 1.15;
+
+    if (style === "feather_fan") {
+      setPoint(HERO_FAN[0], sx, sy);
+      setPoint(HERO_FAN[1], sx + ca * 9 + px * 6, sy + sa * 9 + py * 6);
+      setPoint(HERO_FAN[2], sx + ca * 13, sy + sa * 13);
+      setPoint(HERO_FAN[3], sx + ca * 9 - px * 6, sy + sa * 9 - py * 6);
+      ZS.wpoly(c, HERO_FAN, a.seed + 201, 0.45, true);
+      c.fill();
+      c.stroke();
+      for (let i = -1; i <= 1; i++) {
+        ZS.wline(
+          c,
+          sx,
+          sy,
+          sx + ca * 11 + px * i * 4,
+          sy + sa * 11 + py * i * 4,
+          a.seed + 204 + i,
+          0.3,
+        );
+      }
+      return;
+    }
+    if (style === "great_bow" || style === "bow" || style === "bow_blades") {
+      ZS.wline(c, sx, sy, sx + ca * 7, sy + sa * 7, a.seed + 211, 0.45);
+      ZS.wcirc(c, sx + ca * 10, sy + sa * 10, style === "great_bow" ? 7 : 5, a.seed + 213, 0.55);
+      if (style !== "bow_blades") return;
+    }
+    if (style === "dual_swords" || style === "bow_blades" || style === "flying_blades") {
+      ZS.wline(c, sx, sy, sx + ca * 15 + px * 4, sy + sa * 15 + py * 4, a.seed + 221, 0.45);
+      ZS.wline(c, sx, sy, sx + ca * 15 - px * 4, sy + sa * 15 - py * 4, a.seed + 223, 0.45);
+      return;
+    }
+    if (style === "chain_blade" || style === "ribbon_blades") {
+      let x = sx;
+      let y = sy;
+      for (let i = 0; i < 4; i++) {
+        const nx = sx + ca * (5 + i * 5) + px * (i % 2 ? 3 : -3);
+        const ny = sy + sa * (5 + i * 5) + py * (i % 2 ? 3 : -3);
+        ZS.wline(c, x, y, nx, ny, a.seed + 231 + i, 0.35);
+        x = nx;
+        y = ny;
+      }
+      ZS.wcirc(c, x, y, 2.5, a.seed + 237, 0.35);
+      return;
+    }
+    if (style === "serpent_spear") {
+      let x = sx;
+      let y = sy;
+      for (let i = 1; i <= 5; i++) {
+        const nx = sx + (ca * (reach * i)) / 5 + px * (i % 2 ? 1.6 : -1.6);
+        const ny = sy + (sa * (reach * i)) / 5 + py * (i % 2 ? 1.6 : -1.6);
+        ZS.wline(c, x, y, nx, ny, a.seed + 241 + i, 0.3);
+        x = nx;
+        y = ny;
+      }
+      return;
+    }
+    if (style === "twin_halberds") {
+      ZS.wline(c, sx - px * 2.4, sy - py * 2.4, ex - px * 2.4, ey - py * 2.4, a.seed + 251, 0.5);
+      ZS.wline(c, sx + px * 2.4, sy + py * 2.4, ex + px * 2.4, ey + py * 2.4, a.seed + 253, 0.5);
+    } else {
+      ZS.wline(c, sx, sy, ex, ey, a.seed + 255, 0.55);
+    }
+
+    if (style === "great_axe" || style === "great_sabre" || style === "green_dragon") {
+      setPoint(HERO_BLADE[0], ex, ey);
+      setPoint(HERO_BLADE[1], ex - ca * 7 + px * 5, ey - sa * 7 + py * 5);
+      setPoint(HERO_BLADE[2], ex - ca * 5 - px * 2, ey - sa * 5 - py * 2);
+      ZS.wpoly(c, HERO_BLADE, a.seed + 261, 0.4, true);
+      c.fill();
+      c.stroke();
+    } else if (
+      style === "halberd" ||
+      style === "sky_halberd" ||
+      style === "twin_halberds" ||
+      style === "glaive" ||
+      style === "overlord_spear"
+    ) {
+      ZS.wline(
+        c,
+        ex - ca * 5 - px * 4,
+        ey - sa * 5 - py * 4,
+        ex - ca * 2 + px * 4,
+        ey - sa * 2 + py * 4,
+        a.seed + 267,
+        0.4,
+      );
+      if (style === "sky_halberd") {
+        ZS.wline(
+          c,
+          ex - ca * 5 + px * 4,
+          ey - sa * 5 + py * 4,
+          ex - ca * 2 - px * 4,
+          ey - sa * 2 - py * 4,
+          a.seed + 269,
+          0.4,
+        );
+      }
+    } else if (style === "great_club" || style === "iron_whip") {
+      c.lineWidth = 3;
+      ZS.wline(c, ex - ca * 8, ey - sa * 8, ex, ey, a.seed + 271, 0.45);
+    }
+  }
+
+  function drawHeroDetails(c, a, bx, by, rx, ry, ca, sa, px, py) {
+    const m = a.model;
+    const robe = ROBE_WASH[m.robe] || wash(a.faction, 0.8);
+    c.strokeStyle = robe;
+    c.lineWidth = 2.3;
+    ZS.wline(
+      c,
+      rx - ca * 3,
+      ry - sa * 3,
+      rx + ca * 4 - px * 5,
+      ry + sa * 4 - py * 5,
+      a.seed + 281,
+      0.45,
+    );
+
+    if (m.mount === "hex_mark") {
+      c.strokeStyle = "rgba(242,235,216,0.8)";
+      ZS.wcirc(c, bx + ca * 2, by + sa * 2, 3.2, a.seed + 283, 0.35);
+    }
+    const feature = m.feature || "";
+    const hx = rx - px * 1.5;
+    const hy = ry - 10;
+    if (feature.includes("plume") || feature === "double_plume" || feature === "feathers") {
+      c.strokeStyle = feature === "blue_plume" ? "rgba(70,96,150,0.86)" : "rgba(150,54,44,0.86)";
+      c.lineWidth = 1.4;
+      const count = feature === "double_plume" || feature === "feathers" ? 3 : 1;
+      for (let i = 0; i < count; i++) {
+        ZS.wline(
+          c,
+          hx,
+          hy - 3,
+          hx - ca * (6 + i * 2) + px * (i - 1) * 3,
+          hy - sa * (6 + i * 2) - 8,
+          a.seed + 291 + i,
+          0.4,
+        );
+      }
+    }
+    if (feature === "horns") {
+      c.strokeStyle = INK;
+      ZS.wline(c, hx - ca * 2, hy - 2, hx - ca * 5 + px * 5, hy - 9, a.seed + 295, 0.4);
+      ZS.wline(c, hx + ca * 2, hy - 2, hx + ca * 5 - px * 5, hy - 9, a.seed + 297, 0.4);
+    }
+    if (feature === "bells") {
+      c.fillStyle = "rgba(150,120,60,0.9)";
+      for (let i = 0; i < 3; i++) {
+        c.beginPath();
+        c.arc(rx - ca * 4 + px * (i - 1) * 3, ry + 1 + py * (i - 1) * 3, 1.2, 0, 6.29);
+        c.fill();
+      }
+    }
+    if (feature.includes("cape") || feature === "crane_robe" || feature === "fur_mantle") {
+      c.strokeStyle =
+        feature === "white_cape" || feature === "crane_robe" ? "rgba(190,187,170,0.9)" : robe;
+      c.lineWidth = 2.2;
+      ZS.wline(
+        c,
+        rx - ca * 2,
+        ry - 5,
+        bx - ca * 10 - px * 7,
+        by - sa * 10 - py * 7,
+        a.seed + 299,
+        0.65,
+      );
+    }
   }
 
   /* ---------- rank marks, sash, banner, aura (§7.4) ---------- */
@@ -1050,6 +1286,7 @@
     drawMid,
     drawFarUnit,
     drawRider,
+    drawGeneral,
     drawMarks,
     drawWeapon,
     drawShield,

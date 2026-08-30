@@ -22,6 +22,13 @@
   const LOCAL_R = 250;
   const ROUT_CONTAGION_R = 210;
 
+  function hasSkill(general, id) {
+    const ids = general && general.skillIds;
+    if (!ids) return false;
+    for (let i = 0; i < ids.length; i++) if (ids[i] === id) return true;
+    return false;
+  }
+
   function angleDiff(a, b) {
     let d = a - b;
     while (d > Math.PI) d -= Math.PI * 2;
@@ -50,14 +57,17 @@
       for (let i = 0; i < scen.units.length; i++) {
         const u = scen.units[i];
         const leaderBonus = u.general ? 8 : 0;
-        u.moraleMax = sides[u.side].moraleMax + leaderBonus;
+        const wallBonus = u.general && hasSkill(u.general, "iron_wall") ? 6 : 0;
+        u.moraleMax = sides[u.side].moraleMax + leaderBonus + wallBonus;
         u.morale = u.moraleMax;
         u.moraleShock = 0;
         u.morState = STEADY;
         u.waveringT = 0;
         u.rallyProgress = 0;
         u.nearGeneral = null;
-        u.cohesion = u.general ? 0.6 + u.general.tong * 0.003 : 0.72;
+        u.cohesion = u.general
+          ? 0.6 + u.general.tong * 0.003 + (hasSkill(u.general, "discipline") ? 0.06 : 0)
+          : 0.72;
       }
     }
 
@@ -133,7 +143,9 @@
 
       const general = this._nearestGeneral(u);
       u.nearGeneral = general;
-      u.cohesion = general ? 0.6 + general.tong * 0.003 : 0.72;
+      u.cohesion = general
+        ? 0.6 + general.tong * 0.003 + (hasSkill(general, "discipline") ? 0.06 : 0)
+        : 0.72;
       const loss = 1 - u.alive / Math.max(1, u.size0);
       const odds = Math.max(0, enemy / Math.max(1, friend) - 0.7);
       const rearPress = rear / Math.max(1, friend + enemy);
@@ -161,8 +173,10 @@
         u.waveringT = 0;
       }
 
+      const ironWall = general && hasSkill(general, "iron_wall");
       const breakNow =
-        fraction <= 0.2 || (u.morState === WAVERING && u.waveringT >= 5 && fraction <= 0.35);
+        fraction <= (ironWall ? 0.16 : 0.2) ||
+        (u.morState === WAVERING && u.waveringT >= (ironWall ? 6.2 : 5) && fraction <= 0.35);
       if (breakNow) this.scenario._breakUnit(u);
     }
 

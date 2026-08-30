@@ -1,8 +1,8 @@
 /* ZS.portrait — headshot portraits for the named generals.
  *
- * docs/SANGUO-DESIGN.md §7.5 deliberately keeps the battle figure a single
- * silhouette (no portraits, no unique bodies). The portraits live outside the
- * battle — they are drawn in the menu's "Choose your warlord" panel, the
+ * docs/SANGUO-DESIGN.md §7.5 keeps portrait and battlefield rendering as two
+ * views of the same almanac recipe. Portraits live outside the battle — in the
+ * menu's "Choose your warlord" panel, the
  * after-action card, the save-slot icon, the campaign roster, and any cutaway
  * where the player sees a general up close. There, a 60-80 px head shot of
  * brush-ink, wobbly, in the faction sash, is a better read than the
@@ -56,7 +56,7 @@
   function beard(c, x, y, r, seed, type) {
     c.strokeStyle = INK;
     c.lineWidth = 1.3;
-    if (type === "long") {
+    if (type === "long" || type === "bristle" || type === "purple") {
       // the famous 關羽 / 張飛 long beard
       const pts = [
         { x: x - r * 0.7, y: y + r * 0.4 },
@@ -68,8 +68,14 @@
         { x: x + r * 0.7, y: y + r * 0.4 },
       ];
       ZS.wpoly(c, pts, seed, 0.8, true);
+      if (type === "purple") {
+        c.fillStyle = "rgba(105,72,118,0.18)";
+        c.fill();
+        c.strokeStyle = INK;
+      }
       // texture lines
-      for (let i = 0; i < 5; i++) {
+      const strands = type === "bristle" ? 7 : 5;
+      for (let i = 0; i < strands; i++) {
         const yy = y + r * (0.5 + i * 0.18);
         ZS.wline(
           c,
@@ -119,6 +125,19 @@
   // headgear — generals wore simple cloth caps or formal crowns; we keep
   // the silhouette readable, not realistic.
   function cap(c, x, y, r, seed, type) {
+    const style = type || "turban";
+    if (style === "hood" || style === "yellow_turban") type = "turban";
+    else if (
+      style === "silver_helmet" ||
+      style === "tiger_helmet" ||
+      style === "horn_helmet" ||
+      style === "fur_crown" ||
+      style === "feather_crown"
+    ) {
+      type = "helmet";
+    } else if (style === "scholar" || style === "phoenix" || style === "ornate_crown") {
+      type = "crown";
+    }
     c.strokeStyle = INK;
     c.lineWidth = 1.5;
     if (type === "turban") {
@@ -180,6 +199,35 @@
       // a thin cloth band, scholarly style
       ZS.wline(c, x - r * 0.95, y - r * 0.35, x + r * 0.95, y - r * 0.3, seed, 0.5);
     }
+
+    // Hero ornaments stay a few bold strokes so they survive at 60 px.
+    if (style === "horn_helmet" || style === "tiger_helmet") {
+      c.strokeStyle = INK;
+      ZS.wline(c, x - r * 0.45, y - r, x - r * 0.9, y - r * 1.45, seed + 71, 0.5);
+      ZS.wline(c, x + r * 0.45, y - r, x + r * 0.9, y - r * 1.45, seed + 73, 0.5);
+    }
+    if (style === "silver_helmet") {
+      c.strokeStyle = "rgba(112,126,132,0.8)";
+      c.lineWidth = 2.2;
+      ZS.wline(c, x - r * 0.65, y - r * 0.65, x + r * 0.65, y - r * 0.65, seed + 75, 0.4);
+    }
+    if (style === "phoenix" || style === "feather_crown") {
+      c.strokeStyle = "rgba(150,54,44,0.75)";
+      c.lineWidth = 1.4;
+      for (let i = -1; i <= 1; i++) {
+        ZS.wline(c, x + i * r * 0.16, y - r, x + i * r * 0.38, y - r * 1.7, seed + 80 + i, 0.45);
+      }
+    }
+    if (style === "yellow_turban") {
+      c.strokeStyle = "rgba(176,137,36,0.8)";
+      c.lineWidth = 3;
+      ZS.wline(c, x - r * 0.68, y - r * 0.52, x + r * 0.68, y - r * 0.48, seed + 86, 0.4);
+    }
+    if (style === "ornate_crown") {
+      c.strokeStyle = "rgba(150,120,60,0.8)";
+      c.lineWidth = 1.5;
+      ZS.wline(c, x - r, y - r * 1.1, x + r, y - r * 1.1, seed + 88, 0.4);
+    }
   }
 
   // the eyes — a single horizontal stroke each, ink dot for pupil
@@ -240,19 +288,17 @@
     ZS.wline(c, x - r * 1.6, y + r * 2.2, x + r * 1.6, y + r * 2.7, seed + 4, 0.4);
   }
 
-  /* ----- the named-generals catalogue -----
+  /* ----- legacy seed catalogue -----
    *
-   * The figures who matter at P5: 20 named generals + a fallback. Each entry
-   * picks a headgear, beard, and a small personality cue (expression tilt).
-   * The data here is the source of truth for the campaign roster — the same
-   * record is used by ZS.i18n.t(name) in the body of the portrait.
+   * Retained only for standalone compatibility if the campaign content scripts
+   * are omitted. index.html uses the 200-person ZS.Generals catalogue.
    *
    * The faction index is the row in ZS.figure.FACTIONS. The stats wu/tong/zhi
    * are the RTK baseline (194 CE warlords); the actual snapshot the player
    * sees is the live record, but the portrait belongs to the historical
    * person, not the current stats.
    */
-  const CATALOGUE = {
+  const LEGACY_CATALOGUE = {
     /* Shu-Han (劉備 faction) */
     liu_bei: {
       name: { "zh-tw": "劉備", en: "Liu Bei" },
@@ -492,6 +538,11 @@
     },
   };
 
+  /* The 200-person campaign almanac is canonical. Keep the old seed catalogue
+     only as a standalone fallback for pages that load this module without the
+     campaign data scripts. */
+  const CATALOGUE = ZS.Generals ? ZS.Generals.CATALOGUE : LEGACY_CATALOGUE;
+
   /* a fallback for any general the catalogue doesn't list — a generic
      young commander, in faction colour. */
   function _fallback(id) {
@@ -538,8 +589,20 @@
     ZS.wcirc(c, cx, cy + r * 2.2, r * 1.6, seed + 1, 0.5);
 
     // shoulders + sash (drawn first so the head overlaps)
-    shoulders(c, cx, cy, r, seed + 30, g.faction);
+    const faction = g.factionId === undefined ? g.faction : g.factionId;
+    shoulders(c, cx, cy, r, seed + 30, Number(faction) || 0);
     // head
+    if (p.feature === "red_face") {
+      c.fillStyle = "rgba(155,56,42,0.22)";
+      c.beginPath();
+      c.arc(cx, cy, r * 0.96, 0, 6.29);
+      c.fill();
+    } else if (p.feature === "broad_face") {
+      c.fillStyle = "rgba(120,86,60,0.1)";
+      c.beginPath();
+      c.ellipse(cx, cy, r * 1.08, r * 0.96, 0, 0, 6.29);
+      c.fill();
+    }
     face(c, cx, cy, r, seed);
     // eyes (the cue is here — tilted brows, etc.)
     _expression(c, cx, cy, r, seed, p.cue);
@@ -548,12 +611,49 @@
     cap(c, cx, cy, r, seed + 40, p.cap);
     // beard
     beard(c, cx, cy + r * 0.4, r, seed + 50, p.beard);
+    portraitFeature(c, cx, cy, r, seed + 70, p.feature);
 
     // name banner below the head — a small ink strip
     if (w > 50) {
       const nm = ZS.i18n ? ZS.i18n.t(g.name) : g.name.zh || g.name["zh-tw"] || g.name.en;
       c.fillStyle = INK;
       ZS.boilText(c, nm, cx, y + h - 4, Math.max(8, Math.min(14, w * 0.18)), seed + 60, "center");
+    }
+  }
+
+  function portraitFeature(c, x, y, r, seed, feature) {
+    c.strokeStyle = INK;
+    c.lineWidth = 1.35;
+    if (feature === "eye_patch") {
+      ZS.wline(c, x - r * 0.7, y - r * 0.28, x + r * 0.1, y + r * 0.12, seed, 0.35);
+      c.fillStyle = INK;
+      c.beginPath();
+      c.arc(x - r * 0.34, y, r * 0.16, 0, 6.29);
+      c.fill();
+    } else if (feature === "long_ears") {
+      ZS.wcirc(c, x - r * 1.04, y + r * 0.05, r * 0.22, seed, 0.35);
+      ZS.wcirc(c, x + r * 1.04, y + r * 0.05, r * 0.22, seed + 1, 0.35);
+    } else if (feature === "round_eyes") {
+      ZS.wcirc(c, x - r * 0.35, y, r * 0.13, seed, 0.25);
+      ZS.wcirc(c, x + r * 0.35, y, r * 0.13, seed + 1, 0.25);
+    } else if (feature === "jade_eyes") {
+      c.fillStyle = "rgba(55,111,91,0.8)";
+      c.beginPath();
+      c.arc(x - r * 0.35, y, 1.1, 0, 6.29);
+      c.arc(x + r * 0.35, y, 1.1, 0, 6.29);
+      c.fill();
+    } else if (feature === "hair_ribbons") {
+      c.strokeStyle = "rgba(150,54,44,0.65)";
+      ZS.wline(c, x - r * 0.8, y - r * 0.65, x - r * 1.35, y + r * 0.5, seed, 0.45);
+      ZS.wline(c, x + r * 0.8, y - r * 0.65, x + r * 1.35, y + r * 0.5, seed + 1, 0.45);
+    } else if (feature === "white_brows") {
+      c.strokeStyle = "rgba(108,105,96,0.9)";
+      c.lineWidth = 2;
+      ZS.wline(c, x - r * 0.56, y - r * 0.18, x - r * 0.12, y - r * 0.22, seed, 0.35);
+      ZS.wline(c, x + r * 0.12, y - r * 0.22, x + r * 0.56, y - r * 0.18, seed + 1, 0.35);
+    } else if (feature === "forehead_seal") {
+      c.fillStyle = "rgba(150,54,44,0.75)";
+      c.fillRect(x - 1, y - r * 0.55, 2, 2);
     }
   }
 

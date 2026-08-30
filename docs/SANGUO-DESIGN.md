@@ -588,16 +588,24 @@ separate hash/sequence and never consumes the battle RNG merely to draw a shot.
 | 兵 trooper | 1.0 | nothing |
 | 什長/隊長 NCO (slot leader) | 1.05 | the small `wpoly` flag already in `_drawMarks` |
 | 校尉 officer (sub-command) | 1.12 | flag + a coloured sash `wline` across the torso |
-| 將 general (named) | 1.25 | sash + **name banner** (vertical `wline` pole + `wpoly` cloth, `ZS.i18n.t(name)` drawn along it) + **aura ring** `wcirc` at `rgba(faction,0.12)`, radius ∝ `tong` |
+| 將 general (named) | **1.50** | always-mounted hero body + sash + **name banner** (vertical `wline` pole + `wpoly` cloth, `ZS.i18n.t(name)` drawn along it) + **aura ring** `wcirc` at `rgba(faction,0.12)`, radius ∝ `tong` |
 
 ### 7.5 Named generals
 
-A general figure = base body at 1.25 + tier-將 marks + **one distinguishing
-weapon silhouette** from their equipped item (青龍偃月刀 = an oversized dao
-curve; 蛇矛 = a long wavy `wline`; 方天畫戟 = the halberd cross, doubled). That
-plus the name banner and faction sash is the entire visual identity. **No
-portraits, no unique bodies** — the boil style and the read from silhouette do
-the work, and it stays cheap at 800 figures.
+A general figure is **always mounted and 1.5× a standard unit**, even when the
+formation they command is infantry. The horse is a presentation model rather
+than a hidden troop-count conversion: the general still occupies one of the
+unit's men and reads that block's movement/combat rules. Every general gets a
+deterministic model recipe (`mount`, `weapon`, `armour`, `robe`, `feature`).
+
+The full 200-person almanac uses a shared procedural vocabulary. Story-famous
+figures receive hand-authored silhouettes based on their familiar Romance /
+Sangokushi appearance: 關羽 has the red face, long beard, green robe, 赤兔 and
+青龍偃月刀; 張飛 has the dark broad face and 蛇矛; 呂布 has 赤兔, twin plumes
+and 方天畫戟; 諸葛亮 carries the feather fan in scholar robes; 夏侯惇 has the
+eye patch; and so on. Every person also has a 60–120 px procedural portrait for
+the roster, menus and result cards. These remain stick art—silhouette strokes,
+low-alpha washes and stable boil seeds, never bitmap assets.
 
 ### 7.6 Campaign-map art
 
@@ -643,7 +651,8 @@ js/auth/auth.js                   ZS.Auth seam + AnonAuth (deviceId); OAuthAuth 
 js/save/save-manager.js           ZS.SaveManager: schema, migrate chain, capture/apply, autosave
 js/i18n/i18n.js                   ZS.i18n: t / n / set / fallback
 js/i18n/zh-tw.js  js/i18n/en.js   UI string tables
-js/figure/figure.js              ZS.figure: drawBody, weapon table, rank marks, banner, aura  (§7)
+js/figure/figure.js              ZS.figure: bodies, mounted 1.5× generals, weapons, rank marks, aura (§7)
+js/figure/portrait.js            ZS.portrait: procedural headshots from the general almanac
 js/app.js                        ZS.App: MENU→CAMPAIGN↔BATTLE→RESULT state machine, view wiring
 js/campaign/map.js               province graph, paper map pre-render, tokens
 js/campaign/turn.js              player/resolve/ai/world phases
@@ -652,7 +661,7 @@ js/campaign/army.js              army stacks, marching, composition
 js/campaign/ai.js                AI faction planner (v1: greedy heuristics)
 js/campaign/autoresolve.js       closed-form battle model -> BattleResult
 js/campaign/handoff.js           BattleSetup build + BattleResult apply  (§4.3)
-js/campaign/data/*.js            generals.js, provinces.js, skills.js, items.js, events.js  (bilingual data)
+js/campaign/data/*.js            generals.js (200), skills.js (9), provinces/items/events (bilingual data)
 js/scenarios/sanguo.js           ScenarioSanguo — the real-time battle pack (existing contract);
                                   terrain() branches on field.kind: open / town / fort  (§4.3)
 js/battle/command.js             selection, control groups, order queue, unit tray
@@ -680,9 +689,9 @@ everything else is new top-level code on `window.ZS`.
 | **P2** | Battle depth: formations, morale/fatigue/rout rewrite, general units + aura, one active ability, screenshake/hitstop; **fixed sim-step + flow-field movement + render LOD** | battle feels like command, not watching; morale curve probe; **fps probe at `FIELD_CAP` 2000/side — hold ~60 fps or set the fallback cap** |
 | **P3** | **Campaign skeleton**: paper map, provinces, 3 factions, armies, march, turn phases, recruit/develop — battles still skirmish-only | play 10 turns, autosave each World phase, reload mid-campaign |
 | **P4** | **The handoff**: `BattleSetup`/`BattleResult`, campaign battles drop into P2 battle and feed losses/xp/injuries/territory back; `field.kind` = `open` first, then `town` (Outbreak buildings) + `fort` (Hold walls); auto-resolve model | win a province by playing the battle; skip one, compare outcomes; fight a `fort` breach |
-| **P5** | Generals as RPG: xp/level curve, skill unlocks, item modifiers, loyalty + defection, duels | a general levels from lvl 1→5 over a campaign; a duel kills one |
+| **P5** | Generals as RPG: use the shipped 200-person base roster + nine skill definitions; add xp/level curve, skill unlocks, item modifiers, loyalty + defection, duels | a general levels from lvl 1→5 over a campaign; a duel kills one |
 | **P6** | AI factions plan and fight; events; after-action card; `RemoteStore` written + tested against a mock endpoint | AI takes a province from the player; swap to RemoteStore, save/load works unchanged |
-| **P7** | Balance, pacing, content pass (fill the general/province almanac), audio | full campaign playable start to a win condition |
+| **P7** | Balance, pacing, remaining content (the 200-person general almanac is filled; provinces/dialogue/events remain), audio | full campaign playable start to a win condition |
 
 P0–P2 stand alone as a commandable skirmish game — the same "playable at every
 phase" discipline as `HOLD-DESIGN.md` §10.
