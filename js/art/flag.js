@@ -590,6 +590,10 @@
     wang_lang: _mk("朗", NAMED.wang_lang, "plain"),
     kong_rong: _mk("融", NAMED.kong_rong, "plain"),
     liu_yao: _mk("繇", NAMED.liu_yao, "plain"),
+    /* These two were referenced by forFaction() before they existed, so slots
+       5 and 6 handed back `undefined`. NAMED already carried their colours. */
+    liu_biao: _mk("表", NAMED.liu_biao, "banner"),
+    liu_zhang: _mk("璋", NAMED.liu_zhang, "banner"),
     yan_baihu: _mk("虎", NAMED.yan_baihu, "shield"),
 
     // — the Wei general roster —

@@ -35,10 +35,22 @@ for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
         _stream.reconfigure(encoding="utf-8", errors="replace")
 
-# Every file that may contain player-visible text (§6.4 keeps it to these).
+# Every file that may contain player-visible text.
+#
+# §6.4 keeps *UI chrome* in js/i18n and *content* in js/campaign/data, but that
+# is not the whole set: the art modules draw Han characters directly — a flag's
+# single house glyph, a general's name on a portrait, a rank mark on a figure —
+# and those need the same coverage. They were missing from this list, so 120
+# glyphs the game was already drawing fell back to system kai with nothing
+# reporting it (ISSUES.md #2, which is exactly this failure mode).
 TEXT_GLOBS = [
     "js/i18n/*.js",
+    "js/campaign/*.js",
     "js/campaign/data/*.js",
+    "js/art/*.js",
+    "js/figure/*.js",
+    "js/ui/*.js",
+    "js/scenarios/sanguo.js",
     "index.html",
 ]
 

@@ -86,17 +86,22 @@
       return this;
     },
 
-    /* The menu belongs to MENU; a loop-owning view gets the canvas to itself
-       and only its own chrome. */
+    /* The menu belongs to MENU. Any other view gets the canvas to itself and
+       only its own chrome — the campaign has its own bar and panel
+       (js/ui/campaign.js), the battle has the battle bar. */
     onState(state) {
       const inBattle = state === "battle";
+      const inMenu = state === "menu";
       this.root.classList.toggle("in-battle", inBattle);
       this.battleBar.classList.toggle("on", inBattle);
       if (!inBattle) this.updateBattleSelection([], null, true);
-      for (const k in this.panels) {
-        if (inBattle) this.panels[k].classList.remove("on");
+      if (!inMenu) {
+        for (const k in this.panels) this.panels[k].classList.remove("on");
+        if (ZS.CampaignUI && ZS.CampaignUI.pick) ZS.CampaignUI.pick.classList.remove("on");
+      } else {
+        this.show("main");
+        this.refreshContinue();
       }
-      if (!inBattle) this.show("main");
       if (inBattle) this._tickBar();
     },
 
@@ -253,13 +258,16 @@
 
     _main() {
       const soon = () => this.say(ZS.i18n.t("common.soon"));
+      /* P3: the campaign button opens the faction picker, which is what builds
+         the campaign. Until js/campaign/* is on the page it still says so. */
+      const campaign = () => (ZS.CampaignUI ? ZS.CampaignUI.showPick() : soon());
       const skirmish = () => ZS.App.go("battle");
       const cont = btn("btn-continue", "menu.continue", () => this.continueGame(), "primary");
       cont.hidden = true;
       this.btnContinue = cont;
       return el("div", { class: "panel main on", "data-panel": "main" }, [
         cont,
-        btn("btn-campaign", "menu.campaign", soon),
+        btn("btn-campaign", "menu.campaign", campaign),
         btn("btn-skirmish", "menu.skirmish", skirmish),
         btn("btn-load", "menu.load", () => this.show("load")),
         btn("btn-settings", "menu.settings", () => this.show("settings")),
@@ -363,7 +371,7 @@
       const rows = [
         [ZS.i18n.t("about.storage"), ZS.i18n.t(where)],
         [ZS.i18n.t("about.device"), String(ZS.Auth.deviceId || "").slice(0, 8)],
-        [ZS.i18n.t("about.build"), "P0"],
+        [ZS.i18n.t("about.build"), "P3"],
       ];
       this.aboutFacts.textContent = "";
       for (const [k, v] of rows) {
@@ -428,6 +436,9 @@
         await ZS.SaveManager.load(slot);
         this.say(ZS.i18n.t("load.title"));
         this.show("main");
+        /* A save with a campaign in it resumes the campaign; one without is a
+           settings-only save and leaves the player in the menu. */
+        if (ZS.App.campaign) ZS.App.go("campaign", { campaign: ZS.App.campaign });
       } catch (e) {
         const key = e.code === "future_version" ? "err.futureSave" : "err.loadFailed";
         this.say(ZS.i18n.t(key, { code: e.code || "?" }), 5000);

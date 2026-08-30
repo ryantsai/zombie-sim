@@ -135,6 +135,93 @@
     .battle-info-line{font-size:.76rem;}
   }
 
+  /* Campaign chrome: the map is the canvas, this is the little that isn't */
+  .camp-bar{
+    position:absolute;top:0;left:0;right:0;
+    display:none;flex-wrap:wrap;gap:.15rem 1rem;align-items:baseline;
+    padding:.55rem 1rem;pointer-events:auto;
+    background:linear-gradient(var(--paper) 70%,rgba(243,237,222,0));
+  }
+  .camp-bar.on{display:flex;}
+  .cb-date{font-size:1.05rem;letter-spacing:.08em;}
+  .cb-faction{font-size:1.05rem;letter-spacing:.1em;color:var(--ink-soft);}
+  .cb-stat{font-size:.85rem;color:var(--ink-soft);}
+  .camp-bar .mbtn.small{margin-left:auto;}
+  .camp-bar .mbtn.small+.mbtn.small{margin-left:0;}
+
+  .camp-panel{
+    position:absolute;
+    top:3.4rem;right:max(.8rem,env(safe-area-inset-right));
+    display:none;box-sizing:border-box;
+    width:min(320px,calc(100vw - 1.6rem));
+    max-height:calc(100vh - 6rem);overflow-y:auto;
+    padding:.7rem .85rem;
+    background:rgba(243,237,222,.94);
+    border:1.2px solid var(--ink-faint);border-radius:2px;
+    pointer-events:auto;
+  }
+  .camp-panel.on{display:block;}
+  .camp-panel .faint{font-size:.85rem;color:var(--ink-soft);}
+  .cblock+.cblock{margin-top:.8rem;padding-top:.7rem;border-top:1.2px solid var(--ink-faint);}
+  .ctitle{margin:0 0 .1rem;font-size:1.1rem;font-weight:400;letter-spacing:.08em;}
+  .csub{margin-bottom:.4rem;font-size:.78rem;color:var(--ink-soft);}
+  .cr{display:flex;justify-content:space-between;gap:.8rem;font-size:.82rem;line-height:1.6;}
+  .cr .ck{color:var(--ink-soft);}
+  .cr .cv{text-align:right;}
+  .clabel{margin:.55rem 0 .25rem;font-size:.76rem;color:var(--ink-soft);letter-spacing:.08em;}
+  .cgrid{display:flex;flex-wrap:wrap;gap:.3rem;}
+  .crow{display:flex;flex-wrap:wrap;gap:.3rem;align-items:center;}
+  .cchip{
+    font:inherit;font-size:.78rem;color:var(--ink);
+    background:transparent;border:1.2px solid var(--ink-faint);border-radius:2px;
+    padding:.22rem .55rem;cursor:pointer;
+  }
+  .cchip:hover:not(:disabled){border-color:var(--ink);}
+  .cchip:disabled{opacity:.4;cursor:default;}
+  .cnum{
+    font:inherit;font-size:.85rem;width:5.2rem;color:var(--ink);
+    background:transparent;border:1.2px solid var(--ink-faint);border-radius:2px;padding:.2rem .35rem;
+  }
+  .carmies{display:flex;flex-wrap:wrap;gap:.3rem;margin-top:.4rem;}
+  .carmy{
+    font:inherit;font-size:.78rem;color:var(--ink);
+    background:transparent;border:1.2px solid var(--ink-faint);border-radius:2px;
+    padding:.2rem .5rem;cursor:pointer;
+  }
+  .carmy.on{border-color:#963629;color:#963629;}
+
+  .camp-report{
+    position:absolute;
+    left:max(.8rem,env(safe-area-inset-left));
+    bottom:max(.8rem,env(safe-area-inset-bottom));
+    display:none;box-sizing:border-box;
+    width:min(420px,calc(100vw - 1.6rem));
+    padding:.55rem .75rem;
+    background:rgba(243,237,222,.94);
+    border:1.2px solid var(--ink-faint);border-radius:2px;
+    pointer-events:none;
+  }
+  .camp-report.on{display:block;}
+  .rep-title{font-size:.9rem;letter-spacing:.08em;margin-bottom:.2rem;}
+  .rep-line{font-size:.8rem;line-height:1.55;color:var(--ink-soft);}
+
+  .camp-pick{max-height:56vh;}
+  .pick-list{display:flex;flex-direction:column;gap:.3rem;}
+  .pick-card{
+    font:inherit;text-align:left;cursor:pointer;color:var(--ink);
+    background:transparent;border:1.2px solid var(--ink-faint);
+    border-left-width:4px;border-left-style:solid;border-radius:2px;
+    padding:.4rem .6rem;display:flex;flex-direction:column;gap:.1rem;
+  }
+  .pick-card:hover,.pick-card:focus-visible{border-top-color:var(--ink);border-right-color:var(--ink);border-bottom-color:var(--ink);outline:none;}
+  .pick-name{font-size:1.05rem;letter-spacing:.1em;}
+  .pick-meta{font-size:.76rem;color:var(--ink-soft);}
+
+  @media (max-width:600px){
+    .camp-panel{top:auto;bottom:max(.6rem,env(safe-area-inset-bottom));left:.6rem;right:.6rem;width:auto;max-height:42vh;}
+    .camp-report{display:none !important;}
+  }
+
   .toast{
     position:absolute;left:50%;bottom:6vh;transform:translateX(-50%) translateY(6px);
     background:var(--paper);border:1.2px solid var(--ink-faint);
@@ -204,8 +291,20 @@
 <script src="js/battle/command.js"></script>
 <script src="js/scenarios/sanguo.js"></script>
 <script src="js/main.js"></script>
+<!-- the campaign layer: content first, then the graph, then the rules -->
+<script src="js/campaign/data/provinces.js"></script>
+<script src="js/campaign/data/factions.js"></script>
+<script src="js/campaign/roster.js"></script>
+<script src="js/campaign/map.js"></script>
+<script src="js/campaign/army.js"></script>
+<script src="js/campaign/campaign.js"></script>
+<script src="js/campaign/autoresolve.js"></script>
+<script src="js/campaign/ai.js"></script>
+<script src="js/campaign/turn.js"></script>
+<script src="js/campaign/view.js"></script>
 <!-- shell -->
 <script src="js/ui/menu.js"></script>
+<script src="js/ui/campaign.js"></script>
 <script src="js/app.js"></script>
 <script>ZS.App.boot();</script>
 </body>

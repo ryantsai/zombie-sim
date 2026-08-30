@@ -39,6 +39,7 @@
     last: 0,
     running: false,
     storageWarning: false,
+    campaign: null, // the live ZS.Campaign, or null outside a campaign
 
     /* Persisted player settings. The locale lives here *and* in a standalone
        store key, so the very first menu can render before any save loads. */
@@ -66,6 +67,18 @@
         capture: () => this.captureSettings(),
         apply: (data) => this.applySettings(data),
       });
+      /* P3's section (docs/SANGUO-DESIGN.md §5.3). The snapshot is assembled
+         from registered sections, so adding the campaign needed no edit to
+         save-manager.js — decision 3. A null capture is a legitimate save: it
+         means "this player has settings but has never started a campaign". */
+      if (ZS.Campaign) {
+        ZS.SaveManager.register("campaign", {
+          capture: () => (this.campaign ? this.campaign.capture() : null),
+          apply: (data) => {
+            this.campaign = data ? ZS.Campaign.restore(data) : null;
+          },
+        });
+      }
 
       await this.loadSettings(store);
       await ZS.i18n.boot(store);
@@ -404,6 +417,13 @@
   };
 
   App.registerView(STATE.BATTLE, BattleView);
+
+  /* ---- the CAMPAIGN view ---------------------------------------------- */
+
+  /* Registered only when js/campaign/* is on the page. index.html loads it;
+     nothing else does, and `go("campaign")` on a page without it is refused
+     and leaves the current view alone (the P1 lesson, bug 14). */
+  if (ZS.CampaignView) App.registerView(STATE.CAMPAIGN, ZS.CampaignView);
 
   ZS.App = App;
   ZS.INK = INK;
