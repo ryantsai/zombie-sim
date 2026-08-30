@@ -559,5 +559,5 @@ Verification scripts:
 ```
 .verify/flag-grid.js        — render the full flag catalogue + planted + bearer + forFaction
 .verify/generals-portraits.png — generated 200-portrait contact sheet
-.verify/sanguo-shot.js      — screenshot the menu (both locales)
+test/sanguo-shot.js      — screenshot the menu (both locales)
 ```

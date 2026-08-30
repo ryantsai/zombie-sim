@@ -294,9 +294,11 @@ by the other three pages:
   block move), `js/battle/formation.js` (formations as data),
   `js/battle/command.js` (selection, control groups, orders)
 
-Verify: `node .verify/sanguo-p0.js` (45), `node .verify/sanguo-p1.js` (51),
-and `node .verify/pages-regression.js` (23) — the last one exists to prove the
-core changes below did not disturb the original three pages.
+Verify: `npm test` — `test/sanguo-p0.js` (45), `test/sanguo-p1.js` (62),
+`test/sanguo-p3.js` (121), `test/pages-regression.js` (23) and
+`tools/check-generals.js` (200). The pages regression exists to prove the core
+changes below did not disturb the original three pages, and is the only thing
+that will tell you if they did.
 
 **Core changes this page needed.** All opt-in, all no-ops elsewhere:
 
@@ -378,10 +380,13 @@ pointer hooks (contract table above), and null-water guards in
   screen, 910 agents) ≈ 40–50 fps; zoomed ≈ 144 fps (display-capped). The
   scene culls to the camera, so zoom level drives fps. Don't "fix" fit-view
   fps by culling agents — the look is the product.
-- **Scratch area: `.verify/`** — verification scripts live here
-  (`split-check.js` fidelity checker, `regression.js`, fps probes,
-  screenshots). One-off diff scripts get deleted after use; reusable checks
-  stay.
+- **Committed suites: `test/`** — the reusable Playwright checks, run with
+  `npm test`. A guard nobody else can run is not a guard, so anything worth
+  keeping goes here. See `test/README.md`.
+- **Scratch area: `.verify/`** — gitignored. One-off diff scripts
+  (`split-check.js` fidelity checker), fps probes, and screenshot *output*.
+  One-offs get deleted after use; if a check turns out to be worth re-running,
+  move it to `test/`.
 - **`js.bak/`** — full pre-refactor backup (the single-module engine). Use it
   to diff behavior; delete it once the split is battle-tested.
 - **Fidelity-check pattern** (for any future port/move of code): strip

@@ -49,5 +49,5 @@ To rebuild, download the source face from the upstream release page above and:
 python tools/subset-font.py --source /path/to/LXGWWenKaiTC-Regular.ttf
 ```
 
-The source `.ttf` is **not** committed — only the subset is. `.verify/sanguo-p0.js`
-runs `--check` as part of the P0 suite.
+The source `.ttf` is **not** committed — only the subset is. `test/sanguo-p0.js`
+runs `--check` as part of the P0 suite, so `npm test` covers it.

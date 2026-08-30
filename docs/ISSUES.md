@@ -17,7 +17,7 @@ someone could reasonably trip over.
 
 | # | Status | Area | Summary |
 |---|---|---|---|
-| [1](#1) | **DECIDE** | tooling | `.verify/` is gitignored, so no test suite is committed |
+| [1](#1) | ~~RESOLVED~~ | tooling | ~~`.verify/` is gitignored, so no test suite is committed~~ — suites moved to `test/`, `npm test` |
 | [2](#2) | OPEN | tooling | The font subset can silently fall out of date |
 | [3](#3) | OPEN | battle | Battle pacing constants are untuned guesses |
 | [4](#4) | DEFERRED | battle | `open` battlefields are a bare plain — no river, hills or forest |
@@ -33,58 +33,31 @@ someone could reasonably trip over.
 
 ## 1
 
-**DECIDE · tooling · the verification suites are not committed**
+**RESOLVED · tooling · the verification suites are now committed**
 
-`.gitignore` excludes `.verify/`, so none of these are in the repository:
+*Was: `.gitignore` excludes `.verify/`, so a fresh clone got the game and none
+of its tests.*
+
+Fixed 2026-08-31. The reusable suites moved to a committed `test/`; `.verify/`
+went back to being what `AGENTS.md` describes — one-off diff scripts, fps
+probes and screenshot output, all still ignored.
 
 ```
-.verify/sanguo-p0.js             45 assertions
-.verify/sanguo-p1.js             62 assertions
-.verify/sanguo-p3.js            121 assertions
-.verify/pages-regression.js      23 assertions — guards the other three pages
-.verify/sanguo-seed-sweep.js     16-seed no-hang sweep
-.verify/sanguo-shot.js           screenshot helper
-.verify/sanguo-battle-shot.js    screenshot helper
-.verify/sanguo-campaign-shot.js  screenshot helper
+test/sanguo-p0.js             45 assertions
+test/sanguo-p1.js             62 assertions
+test/sanguo-p3.js            121 assertions
+test/pages-regression.js      23 assertions — guards the other three pages
+test/sanguo-seed-sweep.js     16-seed no-hang sweep (slow; not in npm test)
+test/campaign-sweep.js        campaign pacing probe for issue 10
+test/sanguo-*-shot.js         screenshot helpers; PNGs still land in .verify/
 ```
 
-`tools/check-generals.js` is the one gate that *is* committed, which is the
-shape the rest of them should have.
+`npm test` runs the four assertion suites plus `tools/check-generals.js`. Each
+script resolves the repo root itself, so the move needed no edits inside them.
 
-They exist in the current working copy only. A fresh clone gets the game and
-none of its tests.
-
-This is the project's own convention — `AGENTS.md` calls `.verify/` the scratch
-area, and describes it as the place one-off diff scripts get deleted from and
-reusable checks stay. The three sanguo suites are firmly in the "reusable
-checks stay" category, and `PROGRESS.md` opens by telling a resuming session to
-run them, which a fresh clone cannot do.
-
-**Why it matters now rather than later.** `pages-regression.js` is the only
-thing standing between the three original pages and the core changes 火柴三國
-made to `main.js`, `draw.js` and `agents.js`. If it is not in the repo, the
-next person to touch the core has no way to know they broke `zombiesim.html`.
-
-**Options**
-
-1. Un-ignore the four suites specifically, e.g. add negations to `.gitignore`
-   (`!.verify/*.js` plus a rule keeping the screenshots and scratch out), or
-   move them to a committed `test/` directory and leave `.verify/` as true
-   scratch. The second is tidier and matches what the directory is documented
-   to be.
-2. Leave as-is and accept that the tests are machine-local.
-
-**Recommendation:** move the four suites to `test/`, keep `.verify/` for
-scratch and screenshots, and update the `PROGRESS.md` / `AGENTS.md` paths. Low
-cost, and it makes the regression guard real.
-
-**It has now cost something.** P3 added a fifth suite and 121 more assertions,
-and the P1 suite needed an edit when `go("campaign")` stopped being a refused
-phase — that edit is invisible to anyone else because the file is not tracked.
-Two people working on this game cannot see each other's tests.
-
-**Raised:** 2026-08-30, after the P1 bug sweep. Still not actioned — this is
-the maintainer's call about repo layout. Restated 2026-08-31 with P3.
+This also closes the enforcement half of issue 2: `npm test` is now a single
+command that runs the font `--check`, which makes a pre-commit hook or CI step
+a one-liner if anyone wants one.
 
 ---
 
@@ -97,7 +70,7 @@ the maintainer's call about repo layout. Restated 2026-08-31 with P3.
 new Han character and that glyph falls back to system kai — visibly a different
 face, with no error anywhere.
 
-`python tools/subset-font.py --check` catches it, and `.verify/sanguo-p0.js`
+`python tools/subset-font.py --check` catches it, and `test/sanguo-p0.js`
 runs that check, so it is caught **if someone runs the suite**. Nothing enforces
 it. It has already happened twice.
 
@@ -119,9 +92,11 @@ Rebuilding also needs the ~15 MB source face re-downloaded (deliberately not
 committed — see `FONTS.md`), so the fix is not something a contributor
 can do without going and fetching it.
 
-**Options:** a pre-commit hook running `--check`; or CI; or accept the P0 suite
-as the gate and make sure it is run. Interacts with issue 1 — a hook is no use
-if the suite is not in the repo.
+**Options:** a pre-commit hook running `--check`, or CI. Issue 1 is resolved,
+so the suite is in the repo and `npm test` runs the check — a hook is now a
+one-liner rather than a blocked idea. Left OPEN because nothing *enforces* it
+yet, and because the harvest-glob hazard above cannot be fixed by enforcement
+at all.
 
 ---
 

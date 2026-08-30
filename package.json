@@ -3,7 +3,15 @@
   "private": true,
   "description": "The Outbreak — a hand-drawn sketch zombie sim on a zoomable paper world",
   "scripts": {
-    "format": "oxfmt js/",
+    "test": "node test/sanguo-p0.js && node test/sanguo-p1.js && node test/sanguo-p3.js && node test/pages-regression.js && node tools/check-generals.js",
+    "test:p0": "node test/sanguo-p0.js",
+    "test:p1": "node test/sanguo-p1.js",
+    "test:p3": "node test/sanguo-p3.js",
+    "test:pages": "node test/pages-regression.js",
+    "test:seeds": "node test/sanguo-seed-sweep.js",
+    "shots": "node test/sanguo-shot.js && node test/sanguo-battle-shot.js && node test/sanguo-campaign-shot.js",
+    "format": "oxfmt js/app.js js/text.js js/store js/auth js/save js/i18n js/ui js/fonts js/figure js/battle js/campaign js/scenarios/sanguo.js",
+    "format:all": "oxfmt js/",
     "lint": "oxlint js/"
   },
   "devDependencies": {

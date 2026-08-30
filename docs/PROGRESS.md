@@ -7,7 +7,8 @@ re-deriving anything.
 
 - Design contract: `SANGUO-DESIGN.md` (§10 has the phase table)
 - Engine rules: `AGENTS.md` (hard constraints — file://, no build step, oxfmt/oxlint)
-- Open issues: [`ISSUES.md`](ISSUES.md) — one needs a decision (issue 1)
+- Open issues: [`ISSUES.md`](ISSUES.md)
+- Verify: `npm test` (see [`test/README.md`](../test/README.md))
 
 ---
 
@@ -17,7 +18,7 @@ re-deriving anything.
 |---|---|
 | **Phase** | **P3 — campaign skeleton** |
 | **Status** | ✅ **complete** (P0–P3 ✅) |
-| **Verify** | `.verify/sanguo-p3.js` **121 / 0**: map invariants (57 commanderies, connected graph, symmetric adjacency, every seat inside its own cell), the general almanac wired through the roster seam, the whole player order set and every refusal, **ten seasons with no broken invariant**, determinism on a seed, autosave → reload → resume → keep playing, the picker, the view and its teardown. P0 **45 / 0**, P1 **62 / 0**, pages **23 / 0**, `tools/check-generals.js` 200 valid<br>Formation browser probe: all five shapes march and settle at **6–11 px mean slot error**; a 35% casualty cut regenerates a 150-man square to exactly 98 slots. Aggressive 16-seed sweep: **16/16 resolve in 40.8–129.6 s**, no stalemates; seed 47 repeats exactly at 78.367 s. Earlier P2 probe: 6/6 passive samples resolve in 62–119 s; headed Chrome holds **60.0 fps at 2,000/side**; original three pages boot clean<br>P1 baseline (machine-local suites): 62 / 45 / 23 assertions; 16-seed sweep green before P2 |
+| **Verify** | `test/sanguo-p3.js` **121 / 0**: map invariants (57 commanderies, connected graph, symmetric adjacency, every seat inside its own cell), the general almanac wired through the roster seam, the whole player order set and every refusal, **ten seasons with no broken invariant**, determinism on a seed, autosave → reload → resume → keep playing, the picker, the view and its teardown. P0 **45 / 0**, P1 **62 / 0**, pages **23 / 0**, `tools/check-generals.js` 200 valid<br>Formation browser probe: all five shapes march and settle at **6–11 px mean slot error**; a 35% casualty cut regenerates a 150-man square to exactly 98 slots. Aggressive 16-seed sweep: **16/16 resolve in 40.8–129.6 s**, no stalemates; seed 47 repeats exactly at 78.367 s. Earlier P2 probe: 6/6 passive samples resolve in 62–119 s; headed Chrome holds **60.0 fps at 2,000/side**; original three pages boot clean<br>P1 baseline (machine-local suites): 62 / 45 / 23 assertions; 16-seed sweep green before P2 |
 | **Updated** | 2026-08-31 |
 
 ### Next action
@@ -110,7 +111,7 @@ the rest. Settings.music flows into `music.setVolume` automatically.
 | 0.12 | Font loader (data-URI path for file://) | ✅ | `js/fonts/font.js` |
 | 0.13 | Font subset tooling + `--check` coverage mode | ✅ | `tools/subset-font.py` |
 | 0.14 | Font subset asset + OFL text (285 KB woff2, 1,018 glyphs as of P3) | ✅ | `fonts/`, `js/fonts/subset-data.js` |
-| 0.15 | Playwright P0 verification | ✅ | `.verify/sanguo-p0.js` |
+| 0.15 | Playwright P0 verification | ✅ | `test/sanguo-p0.js` |
 | 0.16 | oxfmt + oxlint clean | ✅ | — |
 
 ### What P0 actually proves (the verify script's assertions)
@@ -147,10 +148,10 @@ the rest. Settings.music flows into `music.setVolume` automatically.
 | 1.7 | `ZS.Command` — selection, control groups, orders, overlay | ✅ | `js/battle/command.js` |
 | 1.8 | BATTLE view + skirmish entry + battle bar | ✅ | `js/app.js`, `js/ui/menu.js` |
 | 1.9 | Battle i18n keys (both tables) + font subset rebuild | ✅ | `js/i18n/*`, `fonts/` |
-| 1.10 | Playwright P1 verification (62 assertions) | ✅ | `.verify/sanguo-p1.js` |
-| 1.11 | Regression suite for the three original pages | ✅ | `.verify/pages-regression.js` |
+| 1.10 | Playwright P1 verification (62 assertions) | ✅ | `test/sanguo-p1.js` |
+| 1.11 | Regression suite for the three original pages | ✅ | `test/pages-regression.js` |
 | 1.12 | Bug sweep: 12 fixed, each one now an assertion | ✅ | see below |
-| 1.13 | Seed sweep — no battle may hang | ✅ | `.verify/sanguo-seed-sweep.js` |
+| 1.13 | Seed sweep — no battle may hang | ✅ | `test/sanguo-seed-sweep.js` |
 | 1.14 | Pooled ranged projectiles + four impact paths; logical three-line deployment; special corps; faction armour; selected-unit status box | ✅ | `js/scenarios/sanguo.js`, `js/figure/figure.js`, `js/ui/menu.js` |
 
 ### What P1 proves
@@ -254,7 +255,7 @@ the rest. Settings.music flows into `music.setVolume` automatically.
 | 3.10 | The CAMPAIGN view — sheet, ownership wash, banners, army tokens, routes, selection, pan / zoom / click / right-click | ✅ | `js/campaign/view.js` |
 | 3.11 | The campaign overlay — bar, contextual province / army panel, season report, faction picker | ✅ | `js/ui/campaign.js` |
 | 3.12 | Campaign i18n keys in both tables + font subset rebuild | ✅ | `js/i18n/*`, `fonts/` |
-| 3.13 | Playwright P3 verification (121 assertions) | ✅ | `.verify/sanguo-p3.js` |
+| 3.13 | Playwright P3 verification (121 assertions) | ✅ | `test/sanguo-p3.js` |
 
 ### What P3 proves
 
@@ -298,7 +299,7 @@ the rest. Settings.music flows into `music.setVolume` automatically.
 
 `AGENTS.md` allows core changes that stay scenario-agnostic. Three were needed;
 all are opt-in and no-ops for `zombiesim.html` / `battle.html` / `hold.html`, and
-`.verify/pages-regression.js` exists to keep it that way.
+`test/pages-regression.js` exists to keep it that way.
 
 | File | Change | Why |
 |---|---|---|
@@ -466,7 +467,7 @@ live in `SANGUO-DESIGN.md` §11.)
 Tracked in [`ISSUES.md`](ISSUES.md). Nothing blocks P2; issue 1 (the test
 suites are not committed) is waiting on a call about repo layout.
 - **Rebuild the font subset whenever `js/i18n/*.js` or `js/campaign/data/*.js`
-  gains new text** — new glyphs silently fall back otherwise. `.verify/sanguo-p0.js`
+  gains new text** — new glyphs silently fall back otherwise. `test/sanguo-p0.js`
   runs the coverage check for you; standalone it is
   `python tools/subset-font.py --check`. Rebuilding needs the source face
   (LXGWWenKaiTC-Regular.ttf v1.522, ~15 MB) re-downloaded from
@@ -482,7 +483,7 @@ suites are not committed) is waiting on a call about repo layout.
 Six separate faults, every one of which presented as "the battle stalls and
 never ends". They were found by sweeping seeds with a passive player and
 watching where blocks ended up, not by reading code — the endpoints all looked
-the same and the causes were all different. `.verify/sanguo-seed-sweep.js` is
+the same and the causes were all different. `test/sanguo-seed-sweep.js` is
 that sweep, kept; the P1 suite runs a shorter version every time.
 
 The tell that broke it open was instrumenting a stuck block: **unit drive 43
@@ -664,7 +665,7 @@ because the thing that should have complained was looking somewhere else.
   overlay. Two already-shipping bugs fell out on the way: `forFaction()`
   handing back `undefined` for two factions, and 120 Han glyphs that the flag
   and portrait modules draw sitting outside the font subset because the
-  harvester never looked at those files. New suite `.verify/sanguo-p3.js`.
+  harvester never looked at those files. New suite `test/sanguo-p3.js`.
   Then merged the 200-general almanac from `origin/main` and wired it in
   through `js/campaign/roster.js`: leaders and per-faction rosters validated
   against it, armies staffed to the three-general cap, governors seated, and
