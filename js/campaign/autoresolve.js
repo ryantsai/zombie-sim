@@ -22,6 +22,10 @@
      fortress; P4 turns exactly this into `field.kind` = open / town / fort. */
   const WALL_BONUS = [1.0, 1.25, 1.6];
   const GARRISON_QUALITY = 0.75; // garrison troops are not field troops
+  /* Storming a place costs the attacker more than beating the same men in the
+     open would. §4.3 gives the defender of a `fort` a morale bonus for the same
+     reason; this is the closed-form shadow of it. */
+  const ASSAULT_TAX = 0.12;
 
   function seedFor(camp, provinceId) {
     let h = (camp.seed | 0) ^ (camp.turn * 0x9e3779b1);
@@ -90,6 +94,7 @@
   const AutoResolve = {
     WALL_BONUS,
     GARRISON_QUALITY,
+    ASSAULT_TAX,
 
     /* Two field armies meet. `territory` says what the campaign should do with
        the province afterwards; the caller applies it. */
@@ -128,7 +133,7 @@
       const losses = {};
 
       if (o.attackerWins) {
-        bleed(attackers, Math.round(troopTotal(attackers) * o.winnerFrac), losses);
+        bleed(attackers, Math.round(troopTotal(attackers) * (o.winnerFrac + ASSAULT_TAX)), losses);
         const dead = Math.round(pr.garrison * o.loserFrac);
         pr.garrison = Math.max(0, pr.garrison - dead);
         if (pr.owner) losses[pr.owner] = (losses[pr.owner] || 0) + dead;

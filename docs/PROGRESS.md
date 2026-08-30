@@ -18,7 +18,7 @@ re-deriving anything.
 |---|---|
 | **Phase** | **P3 — campaign skeleton** |
 | **Status** | ✅ **complete** (P0–P3 ✅) |
-| **Verify** | `test/sanguo-p3.js` **121 / 0**: map invariants (57 commanderies, connected graph, symmetric adjacency, every seat inside its own cell), the general almanac wired through the roster seam, the whole player order set and every refusal, **ten seasons with no broken invariant**, determinism on a seed, autosave → reload → resume → keep playing, the picker, the view and its teardown. P0 **45 / 0**, P1 **62 / 0**, pages **23 / 0**, `tools/check-generals.js` 200 valid<br>Formation browser probe: all five shapes march and settle at **6–11 px mean slot error**; a 35% casualty cut regenerates a 150-man square to exactly 98 slots. Aggressive 16-seed sweep: **16/16 resolve in 40.8–129.6 s**, no stalemates; seed 47 repeats exactly at 78.367 s. Earlier P2 probe: 6/6 passive samples resolve in 62–119 s; headed Chrome holds **60.0 fps at 2,000/side**; original three pages boot clean<br>P1 baseline (machine-local suites): 62 / 45 / 23 assertions; 16-seed sweep green before P2 |
+| **Verify** | `npm test` — `test/sanguo-p3.js` **131 / 0**: map invariants (57 commanderies, connected graph, symmetric adjacency, every seat inside its own cell), the general almanac wired through the roster seam, the whole player order set and every refusal, **ten seasons with no broken invariant**, determinism on a seed, autosave → reload → resume → keep playing, the occupation mechanics and the anti-chain property, the picker, the view and its teardown. P0 **45 / 0**, P1 **62 / 0**, pages **23 / 0**, `tools/check-generals.js` 200 valid<br>Campaign pacing (`test/campaign-sweep.js`, 20 seeds): **1.58 commanderies change hands per season**, longest single-stack run **4**, 106% of the men still on the board, 22 → **12.8** factions over 30 years<br>Formation browser probe: all five shapes march and settle at **6–11 px mean slot error**; a 35% casualty cut regenerates a 150-man square to exactly 98 slots. Aggressive 16-seed sweep: **16/16 resolve in 40.8–129.6 s**, no stalemates; seed 47 repeats exactly at 78.367 s. Earlier P2 probe: 6/6 passive samples resolve in 62–119 s; headed Chrome holds **60.0 fps at 2,000/side**; original three pages boot clean<br>P1 baseline: 62 / 45 / 23 assertions; 16-seed sweep green before P2 |
 | **Updated** | 2026-08-31 |
 
 ### Next action
@@ -255,7 +255,9 @@ the rest. Settings.music flows into `music.setVolume` automatically.
 | 3.10 | The CAMPAIGN view — sheet, ownership wash, banners, army tokens, routes, selection, pan / zoom / click / right-click | ✅ | `js/campaign/view.js` |
 | 3.11 | The campaign overlay — bar, contextual province / army panel, season report, faction picker | ✅ | `js/ui/campaign.js` |
 | 3.12 | Campaign i18n keys in both tables + font subset rebuild | ✅ | `js/i18n/*`, `fonts/` |
-| 3.13 | Playwright P3 verification (121 assertions) | ✅ | `test/sanguo-p3.js` |
+| 3.13 | Playwright P3 verification (131 assertions) | ✅ | `test/sanguo-p3.js` |
+| 3.14 | Occupation, battle fatigue and a massing AI — the conquest-chaining fix behind issue 10 | ✅ | `js/campaign/{campaign,turn,ai,army}.js` |
+| 3.15 | Campaign pacing probe | ✅ | `test/campaign-sweep.js` |
 
 ### What P3 proves
 
@@ -292,6 +294,10 @@ the rest. Settings.music flows into `music.setVolume` automatically.
 - the faction picker builds a campaign from the menu, and leaving the view
   releases every listener and drops its reference to the campaign
 - P1's skirmish still deploys its 2,000 men and still tears down cleanly
+- **taking a province is not the same as holding it**: the beaten garrison is
+  dispersed rather than inherited, the stack that took the ground leaves men
+  standing on it, and a stack too small to garrison leaves everything it has
+  and is spent. No stack chains more than a handful of conquests
 
 ---
 
@@ -436,6 +442,20 @@ live in `SANGUO-DESIGN.md` §11.)
     in `js/campaign/autoresolve.js` is untuned; the record it returns is the
     §4.3 `BattleResult`, the same one a played-out battle will return. P4 tunes
     numbers rather than inventing a contract.
+24. **Conquest costs men to hold, not just to win.** P3's first pass changed
+    the owner and left the garrison alone, so a beaten defence flipped sides
+    intact and one stack swept fifteen commanderies in forty seasons.
+    `Campaign.occupy()` disperses the defenders and detaches
+    `OCCUPY_PER_SIZE × size` men from the taking stack. It is the single lever
+    that turns a churn into a front line, and it is worth more than any of the
+    auto-resolve constants.
+25. **Balance was measured, not read.** `test/campaign-sweep.js` asserts
+    nothing; it runs twenty passive campaigns and prints what the board did.
+    Every change to the campaign's pacing went in against those numbers, and
+    two of the four attempts made things worse in a way that reading the code
+    would not have shown — massing let the AI drain back the garrison it had
+    just left, which reintroduced chaining at *worse* than the baseline. Same
+    method as the battle stall family.
 
 ---
 
@@ -674,6 +694,20 @@ because the thing that should have complained was looking somewhere else.
   the subset from the source face — 1,018 glyphs, covering both branches'
   text. Final: P3 121 / 0, P0 45 / 0, P1 62 / 0, pages 23 / 0,
   `check-generals` 200 valid. oxlint clean.
+- **2026-08-31 (cont.)** — closed issue 1 and the structural half of issue 10.
+  The reusable suites moved to a committed `test/` with an `npm test` that runs
+  p0 → p1 → p3 → pages → the almanac gate; `.verify/` went back to scratch and
+  screenshot output. Then built `test/campaign-sweep.js` and measured the
+  campaign before touching it: **3.53 commanderies changing hands per season**
+  and one stack taking **15** provinces without stopping. The causes were
+  structural, not constants — the conqueror inherited the beaten garrison,
+  fighting produced no fatigue, and the AI could not mass. Fixing the first two
+  killed the churn but froze the war (0.40 flips/season, 110% of the men alive
+  after 100 seasons); letting the AI mass unfroze it but let stacks drain back
+  their own occupation force, which was worse than the baseline. Holding the
+  garrison floor on a frontier province settled it: **1.58 flips/season,
+  longest run 4, 106% of the men on the board, 22 → 12.8 factions over 30
+  years**. P3 suite up to 131.
 - **2026-08-31** — completed P2 formation tuning. Column is adaptively narrow,
   square is a hollow concentric perimeter with outward facings, and skirmish is
   a bounded staggered loose order. Formation changes assign immediately while

@@ -26,6 +26,16 @@
   /* Fraction of the treasury a faction is willing to hold rather than spend. */
   const RESERVE = 150;
   const MIN_FIELD_ARMY = 800;
+  /* What a stack is trying to grow to before it is worth marching anywhere.
+     A walled size-3 city holds ~2,400 men, which a `steady` warlord will not
+     touch under ~2,900 of strength — so a warlord who splits every levy into a
+     fresh column never has enough anywhere and the whole map freezes. This is
+     the number that makes a winning faction compound. */
+  const MASS_TARGET = 2200;
+  /* A stack this tired stays where it is and recovers (fatigue sheds 0.25 a
+     season). Marching a spent column into a fight is how a faction loses its
+     field army for nothing. */
+  const RESTING = 0.5;
 
   function seedFor(camp, factionId) {
     let h = (camp.seed | 0) ^ Math.imul(camp.turn, 0x9e3779b1);
@@ -139,13 +149,41 @@
       }
     },
 
-    /* Turn surplus garrison into a field army. A warlord with everything
-       behind walls never takes anything. */
+    /* Turn surplus garrison into field armies — and, first, into *bigger*
+       field armies. A warlord with everything behind walls never takes
+       anything, but one with five under-strength columns takes nothing either. */
     forces(camp, factionId, f, rng) {
       const armies = camp.armiesOf(factionId);
       const owned = camp.provincesOf(factionId);
       if (!owned.length) return;
-      if (armies.length >= Math.max(1, Math.ceil(owned.length / 2))) return;
+
+      /* Top up a stack standing at home before raising another one. This is
+         the AI using the player's own "raise into an existing army" order, and
+         it is what lets a faction mass rather than sprinkle. */
+      const front = frontier(camp, factionId);
+      for (const a of armies) {
+        if (ZS.Army.isMarching(a) || a.troops >= MASS_TARGET) continue;
+        const pr = camp.prov(a.at);
+        if (!pr || pr.owner !== factionId) continue;
+        /* Only genuine surplus goes to the field. A province has to keep the
+           garrison it takes to hold it, which in a city this stack has just
+           stormed is exactly the men it left there — otherwise the column
+           occupies, immediately drains its own occupation force back, and
+           marches on, which is the chaining this was supposed to stop. */
+        /* A province on the frontier keeps twice its holding garrison: those
+           men are already doing a job, and stripping the border to build the
+           column that defends the border is how every province ends up at its
+           floor and every marginal attack starts succeeding. */
+        const keep = camp.occupationCost(a.at) * (front.indexOf(a.at) >= 0 ? 2 : 1);
+        const floor = Math.max(ZS.Campaign.GARRISON_MIN, keep);
+        const spare = pr.garrison - floor;
+        if (spare < 300) continue;
+        const take = Math.min(spare, MASS_TARGET - a.troops);
+        pr.garrison -= take;
+        ZS.Army.reinforce(a, ZS.Turn.splitByComp(take, a.comp));
+      }
+
+      if (armies.length >= Math.max(1, owned.length)) return;
 
       let best = null,
         most = 0;
@@ -174,6 +212,10 @@
     movement(camp, factionId, nerve, rng) {
       for (const a of camp.armiesOf(factionId)) {
         if (ZS.Army.isMarching(a) || a.troops <= 0) continue;
+        /* Spent columns rest. Fatigue sheds a quarter per quiet season, so
+           this is two seasons at most, and it stops a faction from feeding a
+           worn-out stack into the next city. */
+        if (a.fatigue > RESTING) continue;
         const strength = ZS.Army.strength(a);
 
         let prize = null,
@@ -227,6 +269,7 @@
     },
   };
 
+  CampaignAI.MASS_TARGET = MASS_TARGET;
   CampaignAI.defenceOf = defenceOf;
   CampaignAI.frontier = frontier;
   ZS.CampaignAI = CampaignAI;

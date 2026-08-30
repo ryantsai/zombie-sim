@@ -24,7 +24,7 @@ someone could reasonably trip over.
 | [7](#7) | DEFERRED | structure | Duels still need their §9 file |
 | [8](#8) | NIT | tooling | `oxfmt js/` rewrites line endings across every core file |
 | [9](#9) | NIT | render | `scenario.hud()` allocates per frame |
-| [10](#10) | OPEN | campaign | The auto-resolve model is untuned, and P4 has to keep it honest against a played battle |
+| [10](#10) | OPEN | campaign | Auto-resolve constants are still by feel — the conquest-chaining causes are fixed, the tuning is P4's |
 | [11](#11) | OPEN | campaign | 108 of the 200 generals serve nobody |
 | [12](#12) | DEFERRED | campaign | No diplomacy, no events, no win condition beyond last-one-standing |
 | [13](#13) | NIT | campaign | The campaign has no fog of war |
@@ -211,49 +211,64 @@ grows.
 
 **OPEN · campaign · the auto-resolve model is untuned**
 
-`js/campaign/autoresolve.js` decides every campaign battle in P3, and its
-numbers were chosen to produce a moving board, not because they are right:
+`js/campaign/autoresolve.js` decides every campaign battle until P4, and its
+numbers were chosen to produce a moving board rather than because they are
+right. The **shape** is settled and is not the open question: it returns the
+§4.3 `BattleResult`, so P4 replaces arithmetic rather than a contract.
 
-| Constant | Value | Concern |
+### The structural half is fixed
+
+The first probe (`test/campaign-sweep.js`, 20 seeds × 40 seasons, passive
+player) said the problem was not really the constants:
+
+| | before | after |
 |---|---|---|
-| `WALL_BONUS` | `[1.0, 1.25, 1.6]` | what a man behind a wall is worth |
-| `GARRISON_QUALITY` | `0.75` | garrison troops against field troops |
-| the RNG band | `±6%` on the strength ratio | how often the weaker side wins |
-| `loserFrac` / `winnerFrac` | `0.30-0.65` / `0.06-0.28` | how expensive a battle is |
+| commanderies changing hands | **3.53** / season | 1.58 / season |
+| chained conquests (≤3 seasons apart) | **86.9** / campaign | 17.6 |
+| longest single-stack run | **15** provinces | **4** |
+| median garrison at the end | 1,187 | 1,100 |
+| men left on the board | 78% of the opening | 106% |
+| factions still holding ground (120 seasons) | — | 12.8 of 22 |
 
-The **shape** is settled and is not the open question: it returns the §4.3
-`BattleResult`, so P4 replaces arithmetic rather than a contract.
+Three things, none of them a constant, were letting one stack sweep a third of
+the empire:
 
-What P4 has to do is the harder half of §4.3: *"the closed-form model is tuned
-to roughly match played-out results so skipping isn't strictly better or
-worse."* That needs both paths to exist before either can be judged, which is
-why this is P4's problem and not P3's. The natural probe is a fixed
-`BattleSetup` fought both ways over a spread of seeds, comparing winner rate
-and loss ratio.
+1. **The conqueror inherited the beaten garrison.** `setOwner` changed the flag
+   and left `garrison` untouched, so the defenders flipped sides intact and
+   taking ground cost nothing to hold. `Campaign.occupy()` now disperses them
+   and detaches a holding garrison from the stack that took the place.
+2. **Fighting produced no fatigue.** It was added only by marching and
+   retreating, so a stack that had just stormed a walled city was at full
+   strength the next season. `Army.tire()` is called after both battle paths.
+3. **The AI could not concentrate force.** It split every levy into a fresh
+   column and never topped one up, so once garrisons outgrew attack stacks the
+   war simply stopped — 0.40 flips/season and 110% of the men still alive after
+   100 seasons. It now masses toward `MASS_TARGET`, rests a spent stack, and
+   will not strip a frontier province below twice its holding garrison.
 
-**What it looks like now.** A passive-player probe from 曹操, eight seasons in
-(`.verify/sanguo-campaign-turn9.png`): six commanderies changed hands, several
-garrisons had been ground down to double digits, and 馬騰 had taken both 長安
-and 襄陽 — opposite ends of the map. The board is alive, which is what P3
-needed, but it is also *too* decisive: assaults are cheap enough that a stack
-can chain conquests without ever needing to stop and rebuild.
+`test/sanguo-p3.js` asserts the anti-chain property and the occupation
+mechanics directly, so this cannot silently come back.
 
-Two candidates, and they are separable:
+### What is still open
 
-- the model itself — `loserFrac` starts at 0.30 even for a lopsided win, so a
-  garrison rarely survives two assaults;
-- the AI's nerve (`js/campaign/ai.js`, `NERVE`) and the fact that a stack
-  re-plans every season with no cost to changing its mind.
+The numbers themselves. `WALL_BONUS`, `GARRISON_QUALITY`, `ASSAULT_TAX`, the
+±6% band, `loserFrac` / `winnerFrac`, `OCCUPY_PER_SIZE` and `MASS_TARGET` are
+all still picked by feel — they now produce a war that sustains itself and
+consolidates (22 → 12.8 factions over 30 years) instead of one that thrashes or
+freezes, which is what P3 needed, and no more than that.
 
-Tune the model first: the AI is estimating the fight it will actually get, so
-a less decisive assault should make a `wary` warlord genuinely cautious without
-touching the planner.
+The real gate is §4.3's: *"the closed-form model is tuned to roughly match
+played-out results so skipping isn't strictly better or worse."* That cannot be
+judged until P4 makes both paths exist. The probe to write then is a fixed
+`BattleSetup` fought both ways across a spread of seeds, comparing winner rate
+and loss ratio; `test/campaign-sweep.js` is the harness pattern to copy.
 
 Interacts with issue 3: a played-out battle's losses are whatever the sim
 produced, so tuning the closed form against it inherits whatever the pacing
 constants are doing.
 
-**Raised:** 2026-08-31, with P3.
+**Raised:** 2026-08-31 with P3. Structural causes fixed the same day; the
+tuning stays open for P4.
 
 ---
 

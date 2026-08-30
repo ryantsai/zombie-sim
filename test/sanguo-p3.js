@@ -389,7 +389,12 @@ async function main() {
   const ten = await page.evaluate(() => {
     const c = ZS.App.campaign;
     const problems = [];
-    const seen = { battles: 0, captured: 0, aiMarches: 0 };
+    const seen = { battles: 0, captured: 0, aiMarches: 0, tired: 0 };
+    /* ISSUES.md #10: a stack must not be able to chain conquests. Measured the
+       same way test/campaign-sweep.js measures it — a second province taken
+       within three seasons of the last one by the same army. */
+    const lastTake = new Map();
+    let longestRun = 0;
     const startOwners = {};
     for (const id in c.provinces) startOwners[id] = c.provinces[id].owner;
 
@@ -397,6 +402,22 @@ async function main() {
       const rep = ZS.Turn.end(c);
       seen.battles += rep.battles.length;
       seen.captured += rep.captured.length;
+      for (const cap of rep.captured) {
+        if (typeof cap.occupied !== "number") problems.push("capture left no garrison record");
+        const prev = lastTake.get(cap.by);
+        if (prev && c.turn - prev.turn <= 3) {
+          prev.run += 1;
+          prev.turn = c.turn;
+          if (prev.run > longestRun) longestRun = prev.run;
+        } else {
+          lastTake.set(cap.by, { turn: c.turn, run: 1 });
+          if (longestRun < 1) longestRun = 1;
+        }
+        /* That the beaten garrison does not simply change flag is checked at
+           the moment of capture, in the [occupation] block — not here, where a
+           whole World phase of recruiting has already run over it. */
+      }
+      for (const aid in c.armies) if (c.armies[aid].fatigue > 0) seen.tired++;
 
       for (const fid in c.factions) {
         const f = c.factions[fid];
@@ -431,6 +452,8 @@ async function main() {
       battles: seen.battles,
       captured: seen.captured,
       aiMarches: seen.aiMarches,
+      tired: seen.tired,
+      longestRun,
       changed,
       armies: Object.keys(c.armies).length,
       logLines: c.log.length,
@@ -440,11 +463,57 @@ async function main() {
   eq("ten seasons advanced the clock to turn 11", ten.turn, 11);
   eq("...which is 196 CE", ten.year, 196);
   eq("...and the season wrapped correctly", ten.season, 2);
-  eq("no invariant broke across ten seasons", ten.problemCount, 0, ten.problems);
+  ok("no invariant broke across ten seasons", ten.problemCount === 0, ten.problems);
   ok("the AI is actually marching", ten.aiMarches > 0, ten);
   ok("battles happened without anyone touching a battlefield", ten.battles > 0, ten);
   ok("provinces changed hands", ten.changed > 0, ten);
   ok("the world phase wrote a record", ten.logLines > 0, ten.logLines);
+  ok("no stack chains conquests (ISSUES #10)", ten.longestRun > 0 && ten.longestRun <= 6, ten);
+  ok("...and fighting tires the men who did it", ten.tired > 0, ten.tired);
+
+  /* ---- occupation ------------------------------------------------------ */
+  /* The mechanism behind the anti-chain assertion above, checked directly:
+     P3's first pass changed the owner and left `garrison` alone, so a beaten
+     defence flipped sides intact and the conqueror walked on with a full stack
+     and a free garrison behind it. */
+  console.log("\n[occupation]");
+  const occ = await page.evaluate(() => {
+    const c = ZS.Campaign.create(31337, "cao_cao");
+    const target = "puyang"; // Lü Bu's, next door to Chenliu
+    const pr = c.prov(target);
+    pr.garrison = 4000;
+    const a = c.armiesOf("cao_cao")[0];
+    a.at = "chenliu";
+    a.troops = 5000;
+    const before = { troops: a.troops, owner: pr.owner, cost: c.occupationCost(target) };
+    const left = c.occupy(target, a);
+    return {
+      before,
+      left,
+      after: a.troops,
+      owner: pr.owner,
+      garrison: pr.garrison,
+      loyalty: pr.loyalty,
+      size: ZS.CampaignMap.province(target).size,
+      /* a stack that cannot spare a holding garrison leaves what it has */
+      spent: (() => {
+        const c2 = ZS.Campaign.create(31337, "cao_cao");
+        const p2 = c2.prov("puyang");
+        p2.garrison = 900;
+        const small = c2.raiseArmy("cao_cao", "chenliu", 120);
+        const gave = c2.occupy("puyang", small);
+        return { gave, troops: small.troops, garrison: p2.garrison, owner: p2.owner };
+      })(),
+    };
+  });
+  eq("the beaten garrison does not change flag", occ.garrison, occ.left);
+  eq("...it is replaced by men the taking stack left behind", occ.left, occ.before.cost);
+  eq("...which really came out of that stack", occ.after, occ.before.troops - occ.left);
+  eq("the province changes hands", occ.owner, "cao_cao");
+  eq("...and a conquest is not loved", occ.loyalty, 30);
+  ok("the holding garrison scales with the province", occ.before.cost === 260 * occ.size, occ);
+  eq("a stack too small to garrison leaves everything it has", occ.spent.troops, 0);
+  ok("...and the province is still taken", occ.spent.owner === "cao_cao" && occ.spent.garrison === 120, occ.spent);
 
   /* ---- determinism --------------------------------------------------- */
   console.log("\n[determinism]");

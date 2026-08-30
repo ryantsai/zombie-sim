@@ -35,6 +35,11 @@
   const LOYALTY_DRIFT = 3; // per season, toward the settled level
   const GARRISON_MIN = 200;
 
+  /* Men per point of province size that taking a city costs you to hold it.
+     Occupation is the whole reason a conquest cannot be chained: the stack
+     that took the ground leaves part of itself standing on it. */
+  const OCCUPY_PER_SIZE = 260;
+
   let uid = 1;
 
   class Campaign {
@@ -319,6 +324,34 @@
       return true;
     }
 
+    /* What it costs to hold this province once it is yours. */
+    occupationCost(id) {
+      const pd = this.def(id);
+      return pd ? OCCUPY_PER_SIZE * pd.size : OCCUPY_PER_SIZE;
+    }
+
+    /* Taking a province and holding it are two different things, and P3's
+       first pass conflated them: `setOwner` changed the flag and left
+       `garrison` untouched, so the beaten defenders flipped sides intact and
+       the conqueror walked on with a full stack and a free garrison behind it.
+       A single army swept fifteen commanderies that way.
+
+       So: the beaten garrison is dispersed, and the army that took the ground
+       leaves men standing on it. A stack that cannot spare them leaves what it
+       has and is spent — which is the correct outcome for trying to conquer an
+       empire with one column. */
+    occupy(id, army) {
+      const pr = this.provinces[id];
+      if (!pr || !army) return 0;
+      pr.garrison = 0;
+      const want = this.occupationCost(id);
+      const left = Math.min(army.troops, want);
+      ZS.Army.takeLosses(army, left); // out of the field army...
+      pr.garrison = left; // ...and onto the walls
+      this.setOwner(id, army.faction);
+      return left;
+    }
+
     setOwner(id, factionId) {
       const pr = this.provinces[id];
       if (!pr) return;
@@ -460,6 +493,7 @@
   Campaign.DEV_COST = DEV_COST;
   Campaign.LOYALTY_DRIFT = LOYALTY_DRIFT;
   Campaign.GARRISON_MIN = GARRISON_MIN;
+  Campaign.OCCUPY_PER_SIZE = OCCUPY_PER_SIZE;
   Campaign.BASE_RECRUIT = BASE_RECRUIT;
   Campaign.uid = () => uid++;
 

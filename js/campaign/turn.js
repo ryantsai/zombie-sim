@@ -230,6 +230,7 @@
         const defenders = here.filter((a) => a.faction === defFaction);
         const attackers = here.filter((a) => a.faction !== defFaction);
         const res = ZS.AutoResolve.field(camp, attackers, defenders, pid);
+        for (const a of here) ZS.Army.tire(a, ZS.Army.FATIGUE_FIELD);
         report.battles.push(res);
         camp.note("campaign.log.battle", {
           province: pid,
@@ -252,11 +253,21 @@
         const mine = camp.armiesAt(a.at).filter((x) => x.faction === a.faction && x.troops > 0);
         if (!mine.length || mine[0].id !== a.id) continue; // one assault per province
         const res = ZS.AutoResolve.assault(camp, mine, a.at);
+        for (const x of mine) ZS.Army.tire(x, ZS.Army.FATIGUE_ASSAULT);
         report.battles.push(res);
         if (res.territory === "attacker_takes") {
           const before = owner;
-          camp.setOwner(a.at, a.faction);
-          report.captured.push({ province: a.at, from: before, to: a.faction });
+          /* Occupy, do not merely flag. The beaten garrison disperses and this
+             stack leaves men behind to hold what it took — see
+             Campaign.occupy(). */
+          const left = camp.occupy(a.at, a);
+          report.captured.push({
+            province: a.at,
+            from: before,
+            to: a.faction,
+            by: a.id,
+            occupied: left,
+          });
           camp.note("campaign.log.captured", { province: a.at, faction: a.faction });
         } else {
           camp.note("campaign.log.repulsed", { province: a.at, faction: a.faction });

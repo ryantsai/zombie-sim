@@ -30,12 +30,21 @@
   /* Recruit price per man, by arm. Cavalry costs what cavalry costs. */
   const COST = { spear: 0.9, dao: 1.1, crossbow: 1.4, cav: 3.2 };
 
+  /* What a season of fighting takes out of a stack. Fatigue already docks up
+     to 25% of `strength` and sheds 0.25 per quiet season, so this is the brake
+     on a stack that wants to fight every season without ever resting: storming
+     a city leaves it measurably weaker for the next two. */
+  const FATIGUE_FIELD = 0.22;
+  const FATIGUE_ASSAULT = 0.3;
+
   const Army = {
     ARMS,
     MAX_GENERALS,
     UPKEEP_GOLD,
     UPKEEP_FOOD,
     COST,
+    FATIGUE_FIELD,
+    FATIGUE_ASSAULT,
 
     defaultComp() {
       return { spear: 0.42, dao: 0.26, crossbow: 0.2, cav: 0.12 };
@@ -99,6 +108,12 @@
         gold: Math.ceil(k * UPKEEP_GOLD),
         food: Math.ceil(k * UPKEEP_FOOD * (marching ? MARCH_FOOD_EXTRA : 1)),
       };
+    },
+
+    /* A stack that fought is tired whether it won or not. */
+    tire(a, amount) {
+      a.fatigue = Math.min(1, a.fatigue + amount);
+      return a.fatigue;
     },
 
     isMarching(a) {
