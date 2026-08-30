@@ -479,8 +479,10 @@ live in `SANGUO-DESIGN.md` §11.)
   most of this codebase's object-literal modules; a method pasted in with the
   object-literal `},` is a syntax error that takes the whole file — and
   therefore the campaign — off the page with nothing but an `undefined` to show
-  for it. `node -e 'new Function(require("fs").readFileSync(f,"utf8"))'` is the
-  quickest way to find it.
+  for it. **Run `npm run lint` before `npm test`**: oxlint reports it with the
+  file and line and exits 1, where the suite reports it as
+  `Cannot read properties of undefined` several files away. This cost two
+  debugging detours in one session; it is issue 14.
 
 ## Open / blocked
 

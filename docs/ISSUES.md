@@ -28,6 +28,7 @@ someone could reasonably trip over.
 | [11](#11) | OPEN | campaign | 108 of the 200 generals serve nobody |
 | [12](#12) | DEFERRED | campaign | No diplomacy, no events, no win condition beyond last-one-standing |
 | [13](#13) | NIT | campaign | The campaign has no fog of war |
+| [14](#14) | OPEN | tooling | A script that fails to parse is a silent no-op, and `npm test` never runs the lint that would catch it |
 
 ---
 
@@ -337,3 +338,68 @@ Worth revisiting if it turns out that seeing every stack makes the campaign
 trivial rather than legible. It is a rendering decision, not a data one: the
 campaign state is already the single source, so a visibility filter would sit
 in `js/campaign/view.js` alone.
+
+---
+
+## 14
+
+**OPEN · tooling · a script that fails to parse is a silent no-op**
+
+`index.html` loads about fifty classic `<script src>` files — constraint 1, no
+modules and no bundler. If one of them fails to parse, the browser logs an
+uncaught `SyntaxError`, **skips that file, and carries on**. Every other script
+still runs, the page still boots to the menu, and the module is simply not on
+`window.ZS`.
+
+The failure then surfaces a long way from its cause. It happened twice while
+building P3, both times the same way:
+
+```
+page.evaluate: TypeError: Cannot read properties of undefined (reading 'create')
+```
+
+— which is `ZS.Campaign` being absent, three files and one verify suite away
+from a stray comma in `js/campaign/campaign.js`.
+
+**The specific trap that caused both.** `ZS.Campaign` is a `class`, unlike
+nearly every other module here, which are object literals on `ZS`. A method
+pasted in with the object-literal `},` is a syntax error in a class body:
+
+```js
+class Campaign {
+  occupationCost(id) { ... },   // <- takes the whole file out
+  occupy(id, army) { ... }
+}
+```
+
+**Detection is not the gap.** `npm run lint` catches it exactly, with the file
+and the line, and exits 1:
+
+```
+js/campaign/campaign.js:331:6: error: Unexpected token
+```
+
+The gap is that nothing makes you run it. `npm test` goes straight to
+Playwright, so the cheapest possible failure — a parse error — is reported as
+the most expensive and most confusing one.
+
+**Options**
+
+1. Put `oxlint js/` at the front of `npm test`. One line, and it turns a
+   baffling `TypeError` into a file and a line number. Covers this case
+   entirely.
+2. A boot-time module manifest: `index.html` (or a small list) declares what it
+   expects on `ZS`, and the P0 suite asserts every name is present. This
+   catches a *different* silent failure that option 1 does not — writing a new
+   `js/campaign/foo.js` and forgetting to add the `<script>` tag, which no lint
+   can see and which produces the same `undefined` symptom.
+3. Both.
+
+**Recommendation:** both, in that order. (1) is a one-line change with an
+immediate payoff. (2) is worth doing before the file count grows again — P3
+added eleven script tags, and nothing but a failing assertion somewhere
+downstream would have told anyone if one had been missed.
+
+Interacts with issue 1 only in that the suites now exist in the repo to be run.
+
+**Raised:** 2026-08-31, after hitting it twice in one session.
