@@ -363,12 +363,19 @@ pointer hooks (contract table above), and null-water guards in
 ## Tooling & verification (how we work)
 
 - **Format/lint** (Oxc): `npm run format` / `npm run lint` (or `npx oxfmt
-  js/` / `npx oxlint js/` in an interactive terminal). From non-TTY
-  automation, run the local bins directly — `npx` can hang without a TTY:
-  `node node_modules/oxfmt/bin/oxfmt js/` and
-  `node node_modules/oxlint/bin/oxlint js/` (stdin detached). No config
-  files; Oxc defaults are the house style (e.g. it wraps long calls and adds
-  trailing commas — don't hand-fight it).
+  js/` / `npx oxlint js/ test/ tools/` in an interactive terminal). From
+  non-TTY automation, run the local bins directly — `npx` can hang without a
+  TTY: `node node_modules/oxfmt/bin/oxfmt js/` and
+  `node node_modules/oxlint/bin/oxlint js/ test/ tools/` (stdin detached). No
+  config files; Oxc defaults are the house style (e.g. it wraps long calls and
+  adds trailing commas — don't hand-fight it). `.gitattributes` pins the
+  tree to LF, so formatting the whole of `js/` no longer shows unrelated core
+  files as modified (`ISSUES.md` #8).
+- **`npm test` lints first.** A `<script src>` that fails to parse is skipped
+  silently by the browser — the page still boots and the module is just
+  missing from `ZS`, surfacing as a `TypeError` files away. `oxlint` catches
+  that in milliseconds, and `tools/module-manifest.js` catches the other half:
+  a module with no `<script>` tag on any page (`ISSUES.md` #14).
 - **Browser tests: Playwright 1.62.1 (local devDependency).**
   `require("playwright")` from `D:/dev/zombie-sim` resolves; browsers live in
   `%LOCALAPPDATA%/ms-playwright` (builds use a `chrome-win64` subdir, not

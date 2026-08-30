@@ -10,8 +10,7 @@
     "test:pages": "node test/pages-regression.js",
     "test:seeds": "node test/sanguo-seed-sweep.js",
     "shots": "node test/sanguo-shot.js && node test/sanguo-battle-shot.js && node test/sanguo-campaign-shot.js",
-    "format": "oxfmt js/app.js js/text.js js/store js/auth js/save js/i18n js/ui js/fonts js/figure js/battle js/campaign js/scenarios/sanguo.js",
-    "format:all": "oxfmt js/",
+    "format": "oxfmt js/",
     "lint": "oxlint js/ test/ tools/",
     "test:manifest": "node tools/module-manifest.js"
   },

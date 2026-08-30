@@ -22,7 +22,7 @@ someone could reasonably trip over.
 | [3](#3) | OPEN | battle | Battle pacing constants are untuned guesses |
 | [4](#4) | DEFERRED | battle | `open` battlefields are a bare plain — no river, hills or forest |
 | [7](#7) | DEFERRED | structure | Duels still need their §9 file |
-| [8](#8) | NIT | tooling | `oxfmt js/` rewrites line endings across every core file |
+| [8](#8) | ~~RESOLVED~~ | tooling | ~~`oxfmt js/` rewrites line endings across every core file~~ — `.gitattributes` pins LF |
 | [9](#9) | NIT | render | `scenario.hud()` allocates per frame |
 | [10](#10) | OPEN | campaign | Auto-resolve constants are still by feel — the conquest-chaining causes are fixed, the tuning is P4's |
 | [11](#11) | OPEN | campaign | 108 of the 200 generals serve nobody |
@@ -180,21 +180,33 @@ general RPG depth in P5. `js/battle/flowfield.js`, `formation.js`, `command.js`,
 
 ## 8
 
-**NIT · tooling · `oxfmt js/` rewrites every core file**
+**RESOLVED · tooling · `oxfmt js/` no longer rewrites every core file**
 
-Running it across the whole directory normalises all 17 pre-existing core files
-to LF, so they show as modified with no content change. Format only the sanguo
-paths:
+*Was: running it across the whole directory normalised all 17 pre-existing
+core files to LF, so they showed as modified with no content change. The
+workaround was `npm run format` listing the sanguo paths by hand.*
 
-```bash
-node node_modules/oxfmt/bin/oxfmt js/app.js js/text.js js/store js/auth js/save js/i18n js/ui js/fonts js/figure js/battle js/scenarios/sanguo.js
+Fixed 2026-08-31. It was never really about oxfmt. Everything in the index was
+**already LF**; `core.autocrlf=true` was checking the working copy out as CRLF,
+so the first tool to write a file converted it and git reported the whole file
+as changed.
+
+`.gitattributes` now pins the working copy too:
+
+```
+* text=auto eol=lf
 ```
 
-`node node_modules/oxlint/bin/oxlint js/` over everything is safe.
+plus explicit `binary` for the font, audio and image assets, so git cannot ever
+decide to convert one. Because the index was already LF, `git add
+--renormalize .` was a no-op — the commit is the attributes file alone, and
+`git rm -r --cached . && git reset --hard` refreshed the working copy in place.
+The tree is now LF end to end (97 text files, 3 binary, 1 with no newline).
 
-A `.gitattributes` pinning line endings would settle it properly.
-
----
+`npm run format` is back to plain `oxfmt js/` and `format:all` is gone, the two
+having become the same command. Running it over all 59 files now reports
+`Finished in 61ms on 59 files` and leaves `git status` empty, which is what the
+issue asked for.
 
 ## 9
 
