@@ -28,7 +28,7 @@ someone could reasonably trip over.
 | [11](#11) | OPEN | campaign | 108 of the 200 generals serve nobody |
 | [12](#12) | DEFERRED | campaign | No diplomacy, no events, no win condition beyond last-one-standing |
 | [13](#13) | NIT | campaign | The campaign has no fog of war |
-| [14](#14) | OPEN | tooling | A script that fails to parse is a silent no-op, and `npm test` never runs the lint that would catch it |
+| [14](#14) | ~~RESOLVED~~ | tooling | ~~A script that fails to parse is a silent no-op~~ — `npm test` lints first, and a module manifest is asserted |
 
 ---
 
@@ -46,14 +46,15 @@ probes and screenshot output, all still ignored.
 ```
 test/sanguo-p0.js             45 assertions
 test/sanguo-p1.js             62 assertions
-test/sanguo-p3.js            121 assertions
-test/pages-regression.js      23 assertions — guards the other three pages
+test/sanguo-p3.js            131 assertions
+test/pages-regression.js      29 assertions — guards the other three pages
 test/sanguo-seed-sweep.js     16-seed no-hang sweep (slow; not in npm test)
 test/campaign-sweep.js        campaign pacing probe for issue 10
 test/sanguo-*-shot.js         screenshot helpers; PNGs still land in .verify/
 ```
 
-`npm test` runs the four assertion suites plus `tools/check-generals.js`. Each
+`npm test` runs `oxlint`, then the four assertion suites plus
+`tools/check-generals.js`. Each
 script resolves the repo root itself, so the move needed no edits inside them.
 
 This also closes the enforcement half of issue 2: `npm test` is now a single
@@ -343,63 +344,78 @@ in `js/campaign/view.js` alone.
 
 ## 14
 
-**OPEN · tooling · a script that fails to parse is a silent no-op**
+**RESOLVED · tooling · a script that failed to parse was a silent no-op**
 
-`index.html` loads about fifty classic `<script src>` files — constraint 1, no
-modules and no bundler. If one of them fails to parse, the browser logs an
-uncaught `SyntaxError`, **skips that file, and carries on**. Every other script
-still runs, the page still boots to the menu, and the module is simply not on
-`window.ZS`.
-
-The failure then surfaces a long way from its cause. It happened twice while
-building P3, both times the same way:
+*Was: `index.html` loads ~50 classic `<script src>` files — constraint 1, no
+modules and no bundler. If one failed to parse, the browser logged an uncaught
+`SyntaxError`, **skipped that file, and carried on**. Every other script still
+ran, the page still booted to the menu, and the module was simply not on
+`window.ZS`. The failure then surfaced a long way from its cause:*
 
 ```
 page.evaluate: TypeError: Cannot read properties of undefined (reading 'create')
 ```
 
-— which is `ZS.Campaign` being absent, three files and one verify suite away
-from a stray comma in `js/campaign/campaign.js`.
+*— which is `ZS.Campaign` being absent, three files and one verify suite away
+from a stray comma in `js/campaign/campaign.js`. It happened twice while
+building P3, both times the same way: `ZS.Campaign` is a `class`, unlike nearly
+every other module here, so a method pasted in with the object-literal `},` is
+a syntax error that takes the whole file out.*
 
-**The specific trap that caused both.** `ZS.Campaign` is a `class`, unlike
-nearly every other module here, which are object literals on `ZS`. A method
-pasted in with the object-literal `},` is a syntax error in a class body:
+Fixed 2026-08-31, with both options the issue recommended.
 
-```js
-class Campaign {
-  occupationCost(id) { ... },   // <- takes the whole file out
-  occupy(id, army) { ... }
-}
+### 1. `npm test` lints first
+
+```json
+"lint": "oxlint js/ test/ tools/",
+"test": "npm run lint && node test/sanguo-p0.js && ..."
 ```
 
-**Detection is not the gap.** `npm run lint` catches it exactly, with the file
-and the line, and exits 1:
+Detection was never the gap — `oxlint` always caught this exactly. The gap was
+that nothing made you run it, so the cheapest possible failure was reported as
+the most expensive one. Re-injecting the original trap now gives:
 
 ```
-js/campaign/campaign.js:331:6: error: Unexpected token
+js/campaign/campaign.js:343:34: error: Unexpected token
 ```
 
-The gap is that nothing makes you run it. `npm test` goes straight to
-Playwright, so the cheapest possible failure — a parse error — is reported as
-the most expensive and most confusing one.
+before Playwright launches at all. `test/` and `tools/` were added to the lint
+path at the same time — a suite that fails to parse is the same trap one level
+out.
 
-**Options**
+### 2. A module manifest, harvested rather than hand-kept
 
-1. Put `oxlint js/` at the front of `npm test`. One line, and it turns a
-   baffling `TypeError` into a file and a line number. Covers this case
-   entirely.
-2. A boot-time module manifest: `index.html` (or a small list) declares what it
-   expects on `ZS`, and the P0 suite asserts every name is present. This
-   catches a *different* silent failure that option 1 does not — writing a new
-   `js/campaign/foo.js` and forgetting to add the `<script>` tag, which no lint
-   can see and which produces the same `undefined` symptom.
-3. Both.
+`tools/module-manifest.js` reads each page for its `<script src>` list, and
+each of those files for the exports it promises — assignments to `ZS.<name>` at
+indent ≤ 2, which is this codebase's universal module-export convention.
+Deeper assignments (`ZS.engine`, `ZS.scenario`, `ZS.debug`) are runtime handles
+set inside a function once a scenario is live, and are correctly excluded.
 
-**Recommendation:** both, in that order. (1) is a one-line change with an
-immediate payoff. (2) is worth doing before the file count grows again — P3
-added eleven script tags, and nothing but a failing assertion somewhere
-downstream would have told anyone if one had been missed.
+`test/sanguo-p0.js` asserts index.html delivers all 77 of its names;
+`test/pages-regression.js` does the same for the other three pages (29, 30 and
+28). Both name the offending file in the failure detail:
 
-Interacts with issue 1 only in that the suites now exist in the repo to be run.
+```
+FAIL  all 77 modules index.html loads are on ZS  -> ["Campaign (js/campaign/campaign.js)"]
+```
 
-**Raised:** 2026-08-31, after hitting it twice in one session.
+The manifest also catches what lint structurally cannot: a `js/` module that
+exports to `ZS` and appears in no page's script list — a new file with a
+forgotten `<script>` tag, which produces the same `undefined` symptom and which
+no static check of the file itself can see.
+
+```
+FAIL  no js/ module exports to ZS without a <script> tag on some page
+        -> ["js/campaign/__probe.js"]
+```
+
+Both failure modes were injected deliberately and confirmed to fire before the
+guards were called done.
+
+**Nothing here is hand-maintained**, which was the point. Issue 2's equivalent
+list — `TEXT_GLOBS` in `tools/subset-font.py` — is maintained by hand and has
+silently gone stale twice; this one is derived from the source, so adding a
+module extends the check by itself. `npm run test:manifest` prints it.
+
+**Raised:** 2026-08-31, after hitting it twice in one session. **Resolved** the
+same day.

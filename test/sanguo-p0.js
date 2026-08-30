@@ -21,6 +21,7 @@ const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
 const { chromium } = require("playwright");
+const manifest = require("../tools/module-manifest.js");
 
 const ROOT = path.resolve(__dirname, "..");
 const HEADED = process.argv.includes("--headed");
@@ -119,6 +120,34 @@ async function main() {
   ok("a deviceId was minted", !!boot.deviceId && boot.deviceId.length >= 8, boot.deviceId);
   ok("the deviceId is persisted under hsg:v1:device", boot.lsDevice === boot.deviceId);
   eq("schema version is an integer >= 1", boot.schema >= 1, true);
+
+  /* ---- module manifest --------------------------------------------- */
+  /* Issue 14: a script that fails to parse is skipped silently — the page
+     still boots and the module is just missing from ZS, so the failure
+     surfaces as a TypeError somewhere else entirely. A forgotten <script>
+     tag looks the same and no lint can see it. tools/module-manifest.js
+     reads what each file promises; here we check the page delivered it. */
+  console.log("\n[manifest]");
+  const want = manifest.expected("index.html");
+  ok("every <script src> in index.html exists", want.missing.length === 0, want.missing);
+
+  const got = await page.evaluate(() => Object.keys(window.ZS || {}));
+  const absent = want.names.filter((n) => !got.includes(n));
+  ok(
+    "all " + want.names.length + " modules index.html loads are on ZS",
+    absent.length === 0,
+    absent.map((n) => {
+      const src = Object.keys(want.byFile).find((k) => want.byFile[k].includes(n));
+      return n + " (" + src + ")";
+    }),
+  );
+
+  const orphans = manifest.orphans();
+  ok(
+    "no js/ module exports to ZS without a <script> tag on some page",
+    orphans.length === 0,
+    orphans.map((o) => o.file),
+  );
 
   /* ---- font ------------------------------------------------------- */
   console.log("\n[font]");

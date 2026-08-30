@@ -159,7 +159,7 @@ async function main() {
       if (c.owner(fd.capital) !== fd.id) badCapital.push(fd.id);
     }
     let fieldArmies = 0;
-    for (const aid in c.armies) fieldArmies++;
+    for (const _aid in c.armies) fieldArmies++;
     return {
       turn: c.turn,
       year: c.year,

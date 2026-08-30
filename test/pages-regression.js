@@ -9,6 +9,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const { chromium } = require("playwright");
+const manifest = require("../tools/module-manifest.js");
 
 const ROOT = path.resolve(__dirname, "..");
 const MIME = {
@@ -77,6 +78,14 @@ async function main() {
     ok("runs " + p.scen, boot.scen === p.scen, boot.scen);
     ok("populated (" + boot.agents + " agents)", boot.agents >= p.minAgents, boot);
     ok("world built and camera fitted", boot.worldW > 0 && boot.worldH > 0 && boot.zoom, boot);
+
+    /* Issue 14: a file that fails to parse is skipped silently, so assert
+       every module this page loads actually landed on ZS. */
+    const want = manifest.expected(p.file);
+    const keys = await page.evaluate(() => Object.keys(window.ZS || {}));
+    const absent = want.names.filter((n) => !keys.includes(n));
+    ok("every <script src> exists", want.missing.length === 0, want.missing);
+    ok("all " + want.names.length + " modules are on ZS", absent.length === 0, absent);
 
     /* Let it actually sim for a second of wall clock. */
     await page.waitForTimeout(1200);
