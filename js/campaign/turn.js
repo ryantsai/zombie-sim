@@ -30,6 +30,12 @@
   const GARRISON_FOOD = 10;
   const STARVE_ATTRITION = 0.08; // fraction of every stack lost per starving season
   const UNREST_DECAY = 1;
+  const REST_FOOD = 80;
+
+  /* A season may pause while a player-owned battle runs in ScenarioSanguo.
+     This state is intentionally outside the Campaign record: Campaign.capture()
+     remains the last completed World-phase boundary, exactly as §5.4 asks. */
+  const sessions = new WeakMap();
 
   function ok(extra) {
     return Object.assign({ ok: true }, extra || null);
@@ -40,6 +46,7 @@
 
   const Turn = {
     GARRISON_FOOD,
+    REST_FOOD,
 
     /* ---- player-phase orders ------------------------------------------ */
 
@@ -85,7 +92,16 @@
         ZS.Army.reinforce(a, splitByComp(want, a.comp));
         return ok({ army: a });
       }
-      const a = camp.raiseArmy(camp.playerFactionId, provinceId, want);
+      let comp = null;
+      if (ZS.CampaignLogistics) {
+        const specialty = ZS.CampaignLogistics.specialty(camp.def(provinceId));
+        if (specialty && specialty.cavalry) {
+          comp = ZS.Army.defaultComp();
+          comp.cav *= specialty.cavalry;
+          comp = ZS.Army.normalize(comp);
+        }
+      }
+      const a = camp.raiseArmy(camp.playerFactionId, provinceId, want, comp);
       a.since = camp.turn;
       return ok({ army: a });
     },
@@ -169,11 +185,29 @@
       return fail("campaign.err.badOrder");
     },
 
+    /* Rest is an immediate player-phase order: the officer must physically be
+       in a friendly city (a stationed army counts), consumes provisions, and
+       advances injury recovery twice as fast while restoring loyalty. */
+    rest(camp, generalId, provinceId) {
+      const faction = camp.player();
+      const general = camp.general && camp.general(generalId);
+      if (!faction || !general) return fail("campaign.err.noGeneral");
+      if (faction.generals.indexOf(generalId) < 0) return fail("campaign.err.notOurs");
+      if (faction.food < REST_FOOD) return fail("campaign.err.noFood", { need: REST_FOOD });
+      if (!camp.restGeneral) return fail("campaign.err.badOrder");
+      const result = camp.restGeneral(generalId, provinceId, 1);
+      if (!result.ok) return fail("campaign.err.cannotRest");
+      faction.food -= REST_FOOD;
+      return ok({ general: generalId, cost: { food: REST_FOOD }, result });
+    },
+
     /* ---- the turn ------------------------------------------------------ */
 
     /* Runs phases 2-4 and advances the clock. Returns a report the UI reads;
        the campaign's own `log` keeps the same events for the record. */
     end(camp) {
+      const active = sessions.get(camp);
+      if (active) return transactionFail("turn_in_progress", active);
       if (camp.over) return { over: camp.over, battles: [], turn: camp.turn };
       const report = { turn: camp.turn, battles: [], captured: [], starved: [], over: null };
       this.resolve(camp, report);
@@ -183,6 +217,114 @@
       camp.recount();
       report.over = camp.over;
       return report;
+    },
+
+    /* Start a resumable Resolve phase. Movement happens here exactly once.
+       AI-only encounters are consumed immediately; with `interactive: true`,
+       the first battle involving the player is returned without casualties,
+       fatigue, retreat or ownership changes. */
+    begin(camp, opts) {
+      const active = sessions.get(camp);
+      if (active) return transactionFail("turn_in_progress", active);
+      if (camp.over) {
+        return transactionDone({ over: camp.over, battles: [], turn: camp.turn });
+      }
+      if (!ZS.Handoff) return transactionFail("handoff_unavailable", null);
+
+      const session = {
+        turn: camp.turn,
+        interactive: !!(opts && opts.interactive),
+        phase: "field",
+        queue: [],
+        qi: 0,
+        current: null,
+        done: false,
+        report: {
+          turn: camp.turn,
+          battles: [],
+          captured: [],
+          starved: [],
+          over: null,
+        },
+      };
+      sessions.set(camp, session);
+
+      for (const id in camp.armies) {
+        const a = camp.armies[id];
+        const arrived = ZS.Army.advance(a, ZS.CampaignMap);
+        if (arrived) a.since = camp.turn;
+      }
+      session.queue = fieldEncounters(camp);
+      return drive(camp, session);
+    },
+
+    /* The live handoff context, or null outside a suspended player battle.
+       `pending(camp).setup` is the record passed to ScenarioSanguo. */
+    pending(camp) {
+      const session = sessions.get(camp);
+      return session && session.turn === camp.turn ? session.current : null;
+    },
+
+    /* Apply a played BattleResult and continue the same season. A result must
+       carry the context id emitted by ZS.Handoff.resultFromScenario(); this is
+       what makes a late result from the previous battle harmless. */
+    resolvePending(camp, result) {
+      const session = sessions.get(camp);
+      const bad = validatePending(camp, session, result);
+      if (bad) return bad;
+
+      let receipt;
+      try {
+        receipt = applyEncounter(camp, session, session.current, result);
+      } catch (err) {
+        return transactionFail(
+          (err && (err.code || err.message)) || "handoff_apply_failed",
+          session,
+        );
+      }
+      session.current = null;
+      const answer = drive(camp, session);
+      answer.receipt = receipt;
+      return answer;
+    },
+
+    /* Skip the live battle through the same pure result -> Handoff.apply path
+       as AI-vs-AI encounters. */
+    autoPending(camp) {
+      const session = sessions.get(camp);
+      if (!session || !session.current)
+        return transactionFail("no_pending_battle", session || null);
+      if (session.turn !== camp.turn) return transactionFail("stale_turn", session);
+      const result = preview(session.current, camp);
+      return this.resolvePending(camp, result);
+    },
+
+    /* Decline the engagement. The opposing side is declared the winner with
+       no battle casualties; Handoff owns the safe retreat/occupation rules. */
+    retreatPending(camp) {
+      const session = sessions.get(camp);
+      if (!session || !session.current)
+        return transactionFail("no_pending_battle", session || null);
+      if (session.turn !== camp.turn) return transactionFail("stale_turn", session);
+      const context = session.current;
+      const attacker = context.participants.attacker.factionId;
+      const defender = context.participants.defender.factionId;
+      const player = camp.playerFactionId;
+      if (player !== attacker && player !== defender) {
+        return transactionFail("pending_battle_not_players", session);
+      }
+      const result = {
+        winner: player === attacker ? defender : attacker,
+        losses: { [attacker]: 0, [defender]: 0 },
+        generals: [],
+        territory: player === attacker ? "attacker_retreats" : "attacker_takes",
+        duelLog: [],
+        kind: context.kind,
+        province: context.provinceId,
+        contextId: context.id,
+        retreated: player,
+      };
+      return this.resolvePending(camp, result);
     },
 
     /* Phase 2. Every stack takes one leg of its march, then every province
@@ -345,9 +487,302 @@
         if (pr.unrest > 0) pr.unrest = Math.max(0, pr.unrest - UNREST_DECAY);
       }
 
+      /* Geography closes the books too: a column connected to its capital is
+         supplied, a long chain strains, and an isolated invasion pays real
+         attrition. This runs after upkeep so its fatigue/men are the state the
+         player sees at the start of the next season. */
+      if (ZS.CampaignLogistics) ZS.CampaignLogistics.applyWorld(camp, report);
+
+      if (ZS.CampaignPolitics) ZS.CampaignPolitics.advance(camp, report);
+
+      /* A Tale is queued, not auto-applied. CampaignUI presents the choices
+         after the World phase and the queue is part of the save boundary. */
+      if (ZS.CampaignEvents) ZS.CampaignEvents.queueWorld(camp, false);
+
       this.prune(camp);
     },
   };
+
+  /* ---- resumable resolve transaction -------------------------------- */
+
+  function transactionFail(err, session) {
+    return {
+      ok: false,
+      err,
+      done: false,
+      pending: session ? session.current : null,
+      report: session ? session.report : null,
+    };
+  }
+
+  function transactionState(session) {
+    return {
+      ok: true,
+      done: !!session.done,
+      pending: session.current,
+      report: session.report,
+    };
+  }
+
+  function transactionDone(report) {
+    return { ok: true, done: true, pending: null, report };
+  }
+
+  function validatePending(camp, session, result) {
+    if (!session || !session.current) return transactionFail("no_pending_battle", session || null);
+    if (session.turn !== camp.turn) return transactionFail("stale_turn", session);
+    const context = session.current;
+    if (!result || result.contextId !== context.id) {
+      return transactionFail("stale_battle_result", session);
+    }
+    if (result.kind && result.kind !== context.kind) {
+      return transactionFail("stale_battle_result", session);
+    }
+    if (result.province && result.province !== context.provinceId) {
+      return transactionFail("stale_battle_result", session);
+    }
+    if (context.applied) return transactionFail("battle_already_resolved", session);
+    return null;
+  }
+
+  function liveArmies(camp, encounter, ids, factionId) {
+    const out = [];
+    for (const id of ids) {
+      const a = camp.armies[id];
+      if (!a || a.faction !== factionId || a.at !== encounter.provinceId || a.troops <= 0) continue;
+      if (ZS.Army.isMarching(a)) continue;
+      out.push(a);
+    }
+    out.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    return out;
+  }
+
+  function fieldEncounters(camp) {
+    const byProvince = new Map();
+    const ids = Object.keys(camp.armies).sort();
+    for (const id of ids) {
+      const a = camp.armies[id];
+      if (ZS.Army.isMarching(a) || !a.at || a.troops <= 0) continue;
+      if (!byProvince.has(a.at)) byProvince.set(a.at, []);
+      byProvince.get(a.at).push(a);
+    }
+
+    const out = [];
+    const provinceIds = Array.from(byProvince.keys()).sort();
+    for (const provinceId of provinceIds) {
+      const here = byProvince.get(provinceId);
+      const factions = new Map();
+      for (const a of here) {
+        if (!factions.has(a.faction)) factions.set(a.faction, []);
+        factions.get(a.faction).push(a.id);
+      }
+      if (factions.size < 2) continue;
+
+      const owner = camp.owner(provinceId);
+      let defenderFaction = factions.has(owner) ? owner : null;
+      if (!defenderFaction) {
+        const oldest = here
+          .slice()
+          .sort((a, b) => a.since - b.since || String(a.id).localeCompare(String(b.id)))[0];
+        defenderFaction = oldest.faction;
+      }
+      const attackerFactions = Array.from(factions.keys())
+        .filter((id) => id !== defenderFaction)
+        .sort();
+      for (const attackerFaction of attackerFactions) {
+        out.push({
+          kind: "field",
+          provinceId,
+          attackerFaction,
+          defenderFaction,
+          attackerIds: factions.get(attackerFaction).slice().sort(),
+          defenderIds: factions.get(defenderFaction).slice().sort(),
+        });
+      }
+    }
+    return out;
+  }
+
+  function assaultEncounters(camp) {
+    const groups = new Map();
+    const ids = Object.keys(camp.armies).sort();
+    for (const id of ids) {
+      const a = camp.armies[id];
+      if (ZS.Army.isMarching(a) || !a.at || a.troops <= 0) continue;
+      const owner = camp.owner(a.at);
+      if (owner === null || owner === a.faction) continue;
+      const key = a.at + "\0" + a.faction;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          kind: "assault",
+          provinceId: a.at,
+          attackerFaction: a.faction,
+          defenderFaction: owner,
+          attackerIds: [],
+          defenderIds: [],
+        });
+      }
+      groups.get(key).attackerIds.push(a.id);
+    }
+
+    const out = [];
+    const ordered = Array.from(groups.values()).sort(
+      (a, b) =>
+        a.provinceId.localeCompare(b.provinceId) ||
+        a.attackerFaction.localeCompare(b.attackerFaction),
+    );
+    for (const encounter of ordered) {
+      if (hostileArmyAt(camp, encounter.provinceId, encounter.attackerFaction)) continue;
+      encounter.attackerIds.sort();
+      out.push(encounter);
+    }
+    return out;
+  }
+
+  function buildContext(camp, encounter) {
+    const attackers = liveArmies(camp, encounter, encounter.attackerIds, encounter.attackerFaction);
+    if (!attackers.length) return null;
+    if (encounter.kind === "assault") {
+      if (camp.owner(encounter.provinceId) !== encounter.defenderFaction) return null;
+      if (hostileArmyAt(camp, encounter.provinceId, encounter.attackerFaction)) return null;
+      return ZS.Handoff.buildAssault(camp, attackers, encounter.provinceId);
+    }
+
+    const defenders = liveArmies(camp, encounter, encounter.defenderIds, encounter.defenderFaction);
+    if (!defenders.length) return null;
+    return ZS.Handoff.buildField(camp, attackers, defenders, encounter.provinceId);
+  }
+
+  function nextContext(camp, session) {
+    while (session.qi < session.queue.length) {
+      const encounter = session.queue[session.qi++];
+      const context = buildContext(camp, encounter);
+      if (context) return context;
+    }
+    return null;
+  }
+
+  function involvesPlayer(camp, context) {
+    const player = camp.playerFactionId;
+    return (
+      context.participants.attacker.factionId === player ||
+      context.participants.defender.factionId === player
+    );
+  }
+
+  function armiesFor(camp, ids) {
+    const out = [];
+    for (const id of ids) if (camp.armies[id]) out.push(camp.armies[id]);
+    return out;
+  }
+
+  function preview(context, camp) {
+    const attackers = armiesFor(camp, context.participantArmyIds.attackers);
+    let result;
+    if (context.kind === "field") {
+      const defenders = armiesFor(camp, context.participantArmyIds.defenders);
+      result = ZS.AutoResolve.previewField(camp, attackers, defenders, context.provinceId);
+    } else {
+      result = ZS.AutoResolve.previewAssault(camp, attackers, context.provinceId);
+    }
+    return Object.assign({}, result, { contextId: context.id });
+  }
+
+  function tireIds(camp, ids, amount) {
+    for (const id of ids) {
+      const a = camp.armies[id];
+      if (a) ZS.Army.tire(a, amount);
+    }
+  }
+
+  function applyEncounter(camp, session, context, result) {
+    const receipt = ZS.Handoff.apply(camp, context, result);
+    if (!result.retreated) {
+      tireIds(camp, context.participantArmyIds.attackers, ZS.Army.FATIGUE_FIELD);
+      if (context.kind === "field") {
+        tireIds(camp, context.participantArmyIds.defenders, ZS.Army.FATIGUE_FIELD);
+      } else {
+        /* Assault fatigue is heavier than a field engagement. Replace the
+           field amount just added rather than letting the two stack. */
+        tireIds(
+          camp,
+          context.participantArmyIds.attackers,
+          ZS.Army.FATIGUE_ASSAULT - ZS.Army.FATIGUE_FIELD,
+        );
+      }
+    }
+
+    const battle = Object.assign({}, result, {
+      winner: receipt.winner,
+      territory: receipt.territory,
+      kind: context.kind,
+      province: context.provinceId,
+      contextId: context.id,
+    });
+    session.report.battles.push(battle);
+
+    if (context.kind === "field") {
+      camp.note("campaign.log.battle", {
+        province: context.provinceId,
+        winner: receipt.winner,
+        dead: totalLosses(battle.losses || {}),
+      });
+    } else if (receipt.occupation && receipt.occupation.applied) {
+      session.report.captured.push({
+        province: context.provinceId,
+        from: context.participants.defender.factionId,
+        to: context.participants.attacker.factionId,
+        by: receipt.occupation.armyId,
+        occupied: receipt.occupation.men,
+      });
+      camp.note("campaign.log.captured", {
+        province: context.provinceId,
+        faction: context.participants.attacker.factionId,
+      });
+    } else {
+      camp.note("campaign.log.repulsed", {
+        province: context.provinceId,
+        faction: context.participants.attacker.factionId,
+      });
+    }
+    return receipt;
+  }
+
+  function finishSession(camp, session) {
+    Turn.prune(camp);
+    Turn.ai(camp);
+    Turn.world(camp, session.report);
+    camp.turn += 1;
+    camp.recount();
+    session.report.over = camp.over;
+    session.done = true;
+    session.current = null;
+    sessions.delete(camp);
+    return transactionState(session);
+  }
+
+  function drive(camp, session) {
+    for (;;) {
+      const context = nextContext(camp, session);
+      if (context) {
+        if (session.interactive && involvesPlayer(camp, context)) {
+          session.current = context;
+          return transactionState(session);
+        }
+        applyEncounter(camp, session, context, preview(context, camp));
+        continue;
+      }
+
+      if (session.phase === "field") {
+        Turn.prune(camp);
+        session.phase = "assault";
+        session.queue = assaultEncounters(camp);
+        session.qi = 0;
+        continue;
+      }
+      return finishSession(camp, session);
+    }
+  }
 
   /* ---- helpers -------------------------------------------------------- */
 

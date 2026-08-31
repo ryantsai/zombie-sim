@@ -64,6 +64,8 @@
       this.root.appendChild(this.battleBar);
       this.battleInfo = this._battleInfo();
       this.root.appendChild(this.battleInfo);
+      this.battleAbilities = this._battleAbilities();
+      this.root.appendChild(this.battleAbilities);
 
       this.toast = el("div", { id: "toast", class: "toast" });
       this.root.appendChild(this.toast);
@@ -94,6 +96,7 @@
       const inMenu = state === "menu";
       this.root.classList.toggle("in-battle", inBattle);
       this.battleBar.classList.toggle("on", inBattle);
+      this.battleAbilities.classList.toggle("on", inBattle);
       if (!inBattle) this.updateBattleSelection([], null, true);
       if (!inMenu) {
         for (const k in this.panels) this.panels[k].classList.remove("on");
@@ -114,8 +117,16 @@
         this._tickBar();
       });
       this.speedBtn = speed;
-      const quit = btn("btn-quit-battle", "battle.quit", () => ZS.App.go("menu"), "small");
-      const bar = el("div", { class: "battlebar", id: "battle-bar" }, [speed, quit]);
+      const finish = btn(
+        "btn-finish-battle",
+        "battle.continue",
+        () => ZS.App.finishBattle(),
+        "small primary",
+      );
+      finish.hidden = true;
+      this.finishBattleBtn = finish;
+      const quit = btn("btn-quit-battle", "battle.quit", () => ZS.App.cancelBattle(), "small");
+      const bar = el("div", { class: "battlebar", id: "battle-bar" }, [speed, finish, quit]);
       return bar;
     },
 
@@ -134,6 +145,54 @@
         },
         [this.infoTitle, this.infoStrength, this.infoMorale, this.infoOrder],
       );
+    },
+
+    _battleAbilities() {
+      const hotkeys = { charge: "Q", fire: "W", ambush: "E", inspire: "G", disorder: "R" };
+      this.abilityButtons = {};
+      const bar = el("div", {
+        id: "battle-abilities",
+        class: "battle-abilities",
+        "aria-label": ZS.i18n.t("battle.ability.label"),
+      });
+      for (const id of ["charge", "fire", "ambush", "inspire", "disorder"]) {
+        const button = el("button", {
+          class: "chip ability-chip",
+          "data-ability": id,
+          title: ZS.i18n.t("battle.ability.target." + id),
+        });
+        button.addEventListener("click", () => {
+          if (ZS.Command) ZS.Command.beginAbility(id);
+        });
+        button._hotkey = hotkeys[id];
+        this.abilityButtons[id] = button;
+        bar.appendChild(button);
+      }
+      this.updateBattleAbilities();
+      return bar;
+    },
+
+    updateBattleAbilities() {
+      if (!this.abilityButtons) return;
+      const scen = ZS.Command && ZS.Command.scen;
+      const general = ZS.Command && ZS.Command.playerGeneral ? ZS.Command.playerGeneral() : null;
+      for (const id in this.abilityButtons) {
+        const button = this.abilityButtons[id];
+        const learned =
+          !!general &&
+          (!general.skillIds || general.skillIds.length === 0 || general.skillIds.indexOf(id) >= 0);
+        const cooldown = general ? Math.ceil(general.abilityCd || 0) : 0;
+        button.textContent =
+          button._hotkey +
+          " · " +
+          ZS.i18n.t("battle.ability." + id) +
+          (cooldown ? " " + cooldown : "");
+        button.disabled = !scen || !general || !learned || cooldown > 0 || !!scen.over;
+        button.classList.toggle("on", !!(ZS.Command && ZS.Command.abilityMode === id));
+        button.title = learned
+          ? ZS.i18n.t("battle.ability.target." + id)
+          : ZS.i18n.t("battle.ability.err.unlearned");
+      }
     },
 
     updateBattleSelection(selection, scen, force) {
@@ -227,6 +286,11 @@
       const sp = e ? e.speed : 1;
       this.speedBtn.textContent =
         sp === 0 ? ZS.i18n.t("battle.paused") : ZS.i18n.t("battle.speed", { n: sp });
+      if (this.finishBattleBtn) {
+        const scen = ZS.App.battle && ZS.App.battle.scen;
+        this.finishBattleBtn.hidden = !(scen && scen.over);
+      }
+      this.updateBattleAbilities();
       const now = performance.now();
       if (now >= this.infoNext) {
         this.infoNext = now + 250;
@@ -371,7 +435,7 @@
       const rows = [
         [ZS.i18n.t("about.storage"), ZS.i18n.t(where)],
         [ZS.i18n.t("about.device"), String(ZS.Auth.deviceId || "").slice(0, 8)],
-        [ZS.i18n.t("about.build"), "P3"],
+        [ZS.i18n.t("about.build"), "1.0"],
       ];
       this.aboutFacts.textContent = "";
       for (const [k, v] of rows) {

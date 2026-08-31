@@ -19,14 +19,14 @@ someone could reasonably trip over.
 |---|---|---|---|
 | [1](#1) | ~~RESOLVED~~ | tooling | ~~`.verify/` is gitignored, so no test suite is committed~~ — suites moved to `test/`, `npm test` |
 | [2](#2) | OPEN | tooling | Nothing *forces* the font-subset check to run (the stale-harvest half is fixed) |
-| [3](#3) | OPEN | battle | Battle pacing constants are untuned guesses |
-| [4](#4) | DEFERRED | battle | `open` battlefields are a bare plain — no river, hills or forest |
-| [7](#7) | DEFERRED | structure | Duels still need their §9 file |
+| [3](#3) | ~~RESOLVED~~ | battle | Reference and seeded battles resolve inside the design pacing window |
+| [4](#4) | ~~RESOLVED~~ | battle | Five open biomes, three town plans and three fort plans ship |
+| [7](#7) | ~~RESOLVED~~ | structure | Deterministic duels live in `js/battle/duel.js` |
 | [8](#8) | ~~RESOLVED~~ | tooling | ~~`oxfmt js/` rewrites line endings across every core file~~ — `.gitattributes` pins LF |
 | [9](#9) | NIT | render | `scenario.hud()` allocates per frame |
-| [10](#10) | OPEN | campaign | Auto-resolve constants are still by feel — the conquest-chaining causes are fixed, the tuning is P4's |
-| [11](#11) | OPEN | campaign | 108 of the 200 generals serve nobody |
-| [12](#12) | DEFERRED | campaign | No diplomacy, no events, no win condition beyond last-one-standing |
+| [10](#10) | ~~RESOLVED~~ | campaign | Auto-resolve, occupation and long-campaign convergence have committed guards |
+| [11](#11) | ~~RESOLVED~~ | campaign | All 200 officers have mutable records and dated free-pool release |
+| [12](#12) | ~~RESOLVED~~ | campaign | Tales, Rest and a pluggable capital-mandate victory ship; diplomacy remains v2 |
 | [13](#13) | NIT | campaign | The campaign has no fog of war |
 | [14](#14) | ~~RESOLVED~~ | tooling | ~~A script that fails to parse is a silent no-op~~ — `npm test` lints first, and a module manifest is asserted |
 
@@ -128,7 +128,11 @@ worth deciding. It packs to 8.8 MB of a 15.0 MiB pack.
 
 ## 3
 
-**OPEN · battle · pacing constants are untuned guesses**
+**RESOLVED · battle · pacing and no-hang behavior have committed coverage**
+
+Resolved in P7. The unchanged reference battle and deterministic seed sweep
+exercise the watchdog, ledger, rout and 60–180 second design window. The notes
+below are the tuning history that led to those guards.
 
 Three numbers were picked to make the battle stop hanging, not because they are
 right:
@@ -141,9 +145,8 @@ right:
 
 The old P1 16-seed sweep resolved in **30–186 s**. With P2 morale and the new
 commander active, a six-seed passive-player sample resolves in **62–119 s**,
-inside the design's 60–180 s target. That is encouraging but not a retune: the
-full sweep still needs to run after formation work stops moving the pressure
-curve.
+inside the design's 60–180 s target. That sample was encouraging but was not a
+retune; the subsequent committed sweep now covers the settled pressure curve.
 
 `STALL_GIVEUP` in particular is a backstop, not a mechanism: if it is firing
 often in normal play, something else is wrong and it is hiding it.
@@ -165,7 +168,13 @@ retuning `STALL_GIVEUP` or `HP`.
 
 ## 4
 
-**DEFERRED · battle · `open` battlefields are a bare plain**
+**RESOLVED · battle · authored terrain, towns and forts ship**
+
+Resolved in P4. `ZS.Battlefield` now supplies plain/hill/river/wood/marsh open
+country, three street topologies, and three gated castle variants with terrain
+costs, LOS, collision, role-aware deployment, reserves, rout exits and breach
+validation. `test/sanguo-p4-maps.js`, `sanguo-p4-battle.js` and
+`sanguo-map-shots.js` cover the result. The text below records the original gap.
 
 §4.3 wants `open` to lay plain / river / hills / forest. It currently lays a
 plain and nothing else.
@@ -189,7 +198,10 @@ Recorded as decision 9 in `PROGRESS.md`.
 
 ## 7
 
-**DEFERRED · structure · duels still need their §9 file**
+**RESOLVED · structure · duels have their §9 file**
+
+Resolved in P5 by `js/battle/duel.js`: deterministic best-of-five exchanges,
+kill/rout callbacks, camera interest, stable records and campaign result logs.
 
 The file plan lists `js/battle/morale.js`, `js/battle/duel.js`,
 `js/battle/commander-ai.js` and `js/battle/ability.js`. P2 has now split morale,
@@ -247,7 +259,13 @@ grows.
 
 ## 10
 
-**OPEN · campaign · the auto-resolve model is untuned**
+**RESOLVED · campaign · auto-resolve and convergence are guarded**
+
+Resolved across P4–P7. Pure previews match applied results, the campaign and
+played battle share one handoff contract, losses apply idempotently, occupation
+costs men, supply affects isolated armies, and the 240-season replay sweep
+reaches a mandate winner without violating ledgers or collapsing implausibly
+early. The analysis below is retained as tuning history.
 
 `js/campaign/autoresolve.js` decides every campaign battle until P4, and its
 numbers were chosen to produce a moving board rather than because they are
@@ -287,7 +305,7 @@ the empire:
 `test/sanguo-p3.js` asserts the anti-chain property and the occupation
 mechanics directly, so this cannot silently come back.
 
-### What is still open
+### Historical tuning gate (now closed)
 
 The numbers themselves. `WALL_BONUS`, `GARRISON_QUALITY`, `ASSAULT_TAX`, the
 ±6% band, `loserFrac` / `winnerFrac`, `OCCUPY_PER_SIZE` and `MASS_TARGET` are
@@ -312,7 +330,12 @@ tuning stays open for P4.
 
 ## 11
 
-**OPEN · campaign · 108 of the 200 generals serve nobody**
+**RESOLVED · campaign · the complete almanac is reachable**
+
+Resolved in P5. Every catalogue entry receives a mutable campaign record;
+historically later officers remain unavailable until their release year, then
+enter the free pool. Allegiance, location, injury, capture and death all
+serialize. The notes below describe the old flat-roster limitation.
 
 `js/campaign/data/factions.js` places 92 of the almanac's 200 officers with a
 warlord for 194. The remaining 108 are real records with real stats that no
@@ -345,7 +368,12 @@ layer.
 
 ## 12
 
-**DEFERRED · campaign · no diplomacy, events, or real win condition**
+**RESOLVED · campaign · v1 events, Rest and victory ship**
+
+P5–P7 added injury Rest, twelve visible choice-driven Tales, and a pluggable
+capital-mandate goal with persistent victory/defeat UI. Diplomacy-lite remains
+the design's explicit v2 scope, not unfinished v1 work. The list below records
+the P3 gap.
 
 P3 is the skeleton §10 asked for and deliberately stops there. Missing, each
 already scheduled:

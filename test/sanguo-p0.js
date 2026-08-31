@@ -26,6 +26,19 @@ const manifest = require("../tools/module-manifest.js");
 const ROOT = path.resolve(__dirname, "..");
 const HEADED = process.argv.includes("--headed");
 
+function pythonCommand() {
+  const explicit = process.env.PYTHON;
+  if (explicit && fs.existsSync(explicit)) return { command: explicit, prefix: [] };
+  const local = process.env.USERPROFILE
+    ? path.join(process.env.USERPROFILE, ".local", "bin", "python.exe")
+    : null;
+  if (local && fs.existsSync(local)) return { command: local, prefix: [] };
+  return {
+    command: process.platform === "win32" ? "py" : "python3",
+    prefix: process.platform === "win32" ? ["-3"] : [],
+  };
+}
+
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -71,9 +84,13 @@ function serve() {
 
 /* The app boots asynchronously (store probe, identity, font). */
 function booted(page) {
-  return page.waitForFunction(() => window.ZS && window.ZS.App && window.ZS.App.booted === true, null, {
-    timeout: 10000,
-  });
+  return page.waitForFunction(
+    () => window.ZS && window.ZS.App && window.ZS.App.booted === true,
+    null,
+    {
+      timeout: 10000,
+    },
+  );
 }
 
 async function main() {
@@ -163,7 +180,8 @@ async function main() {
     ok("LXGW WenKai TC subset renders (not the system fallback)", boot.fontOk, boot.fontVia);
     /* §6.3: a glyph outside the subset silently falls back to system kai, and
        we want to know. The tool re-harvests the same sources the build used. */
-    const cov = spawnSync("python", ["tools/subset-font.py", "--check"], {
+    const py = pythonCommand();
+    const cov = spawnSync(py.command, py.prefix.concat(["tools/subset-font.py", "--check"]), {
       cwd: ROOT,
       encoding: "utf-8",
     });
@@ -275,7 +293,11 @@ async function main() {
     /* The MemoryStore honours the same contract. */
     const mem = new ZS.MemoryStore();
     await mem.set("hsg:v1:x", "1");
-    out.mem = [await mem.get("hsg:v1:x"), await mem.get("hsg:v1:nope"), (await mem.keys("hsg:v1:")).length];
+    out.mem = [
+      await mem.get("hsg:v1:x"),
+      await mem.get("hsg:v1:nope"),
+      (await mem.keys("hsg:v1:")).length,
+    ];
 
     await ZS.SaveManager.deleteSlot(9);
     out.afterDelete = (await ZS.SaveManager.store.keys("hsg:v1:slot:9")).length;

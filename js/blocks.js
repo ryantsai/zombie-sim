@@ -110,6 +110,78 @@
       return { ok: true, b };
     }
 
+    /* Cold-path authored placement. The Hold's interactive `place()` keeps
+       its adjacency/open-sky rules; a scenario-owned castle already *is* the
+       authority on its layout and needs to stamp long wall runs without
+       pretending to build outward from the Hold's settlement core. */
+    stamp(tx, ty, kind, w = 1, h = 1, hpMul = 1) {
+      const chk = this.checkStamp(tx, ty, kind, w, h);
+      if (!chk.ok) return chk;
+      const b = this._add(
+        tx | 0,
+        ty | 0,
+        kind,
+        w | 0,
+        h | 0,
+        Math.round(CAT[kind].hp * Math.max(0.01, Number(hpMul) || 1)),
+      );
+      if (kind === "core") this.core = b;
+      return { ok: true, b };
+    }
+
+    checkStamp(tx, ty, kind, w = 1, h = 1) {
+      tx |= 0;
+      ty |= 0;
+      w |= 0;
+      h |= 0;
+      if (!CAT[kind]) return { ok: false, err: "unknown block" };
+      if (w < 1 || h < 1) return { ok: false, err: "invalid footprint" };
+      if (!this.inGrid(tx, ty) || !this.inGrid(tx + w - 1, ty + h - 1)) {
+        return { ok: false, err: "outside the battlefield" };
+      }
+      for (let dy = 0; dy < h; dy++) {
+        for (let dx = 0; dx < w; dx++) {
+          if (this.at(tx + dx, ty + dy)) return { ok: false, err: "something is already there" };
+          const ground = this.tiles.typeAt(tx + dx, ty + dy);
+          if (ground !== 0 && ground !== 2 && ground !== 3) {
+            return { ok: false, err: "build on grass, sand or road" };
+          }
+        }
+      }
+      return { ok: true };
+    }
+
+    /* Validate the whole authored plan before mutating anything. This avoids
+       half a fort surviving when one late segment overlaps a corner. Rows are
+       `{tx, ty, kind, w?, h?, hpMul?}`. */
+    loadLayout(rows) {
+      if (!Array.isArray(rows)) return { ok: false, err: "layout must be an array" };
+      const claimed = new Set();
+      for (const row of rows) {
+        const tx = row && row.tx;
+        const ty = row && row.ty;
+        const w = (row && row.w) || 1;
+        const h = (row && row.h) || 1;
+        const kind = row && row.kind;
+        const chk = this.checkStamp(tx, ty, kind, w, h);
+        if (!chk.ok) return chk;
+        for (let dy = 0; dy < h; dy++) {
+          for (let dx = 0; dx < w; dx++) {
+            const key = this.idx((tx | 0) + dx, (ty | 0) + dy);
+            if (claimed.has(key)) return { ok: false, err: "layout footprints overlap" };
+            claimed.add(key);
+          }
+        }
+      }
+      const list = [];
+      for (const row of rows) {
+        const out = this.stamp(row.tx, row.ty, row.kind, row.w || 1, row.h || 1, row.hpMul || 1);
+        if (!out.ok) return out; // preflight above makes this defensive only
+        list.push(out.b);
+      }
+      return { ok: true, list };
+    }
+
     remove(b, toRubble = true) {
       const i = this.list.indexOf(b);
       if (i >= 0) {

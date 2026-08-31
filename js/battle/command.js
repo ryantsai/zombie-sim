@@ -14,6 +14,8 @@
      A                    select everything you own
      H                    halt where you stand
      F                    cycle the selection's formation
+     Q / W / E / R        target Assault / Fire / Ambush / Disorder
+     G                    Inspire immediately
      space / , / .        pause, slower, faster
      esc                  clear the selection
 
@@ -54,6 +56,7 @@
     marks: [], // recent order markers, decayed for feedback
     lastT: null, // wall-clock stamp of the last overlay draw
     hoverForm: 0,
+    abilityMode: null,
     bound: false,
 
     attach(scen) {
@@ -63,6 +66,7 @@
       this.marks.length = 0;
       this.lastT = null;
       this.drag = null;
+      this.abilityMode = null;
       this._notifySelection(true);
       if (this.bound) return this;
       this.bound = true;
@@ -85,6 +89,7 @@
       this.groups.clear();
       this.marks.length = 0;
       this.drag = null;
+      this.abilityMode = null;
       this._notifySelection(true);
     },
 
@@ -176,6 +181,10 @@
 
     pointerDown(x, y, e) {
       if (!this.scen) return false;
+      if (this.abilityMode && (!e || e.button === 0 || e.button === 2)) {
+        this.castAbility(x, y);
+        return true;
+      }
       if (e && e.button === 2) {
         this.issue(x, y, e);
         return true; // claimed: no camera pan on an order
@@ -244,6 +253,62 @@
       for (const u of this.selection) this.scen.setFormation(u, FORMS[this.hoverForm]);
     },
 
+    playerGeneral() {
+      this.prune();
+      for (let i = 0; i < this.selection.length; i++) {
+        const general = this.selection[i].general;
+        if (general && !general.dead && !general.routFlag && !general.gone) return general;
+      }
+      const generals = (this.scen && this.scen.generals) || [];
+      for (let i = 0; i < generals.length; i++) {
+        const general = generals[i];
+        if (general.side === 0 && !general.dead && !general.routFlag && !general.gone) {
+          return general;
+        }
+      }
+      return null;
+    },
+
+    beginAbility(id) {
+      if (!this.scen || !ZS.BattleAbilities || ZS.BattleAbilities.IDS.indexOf(id) < 0) return false;
+      if (id === "inspire") {
+        const used = this.scen.useAbility(id, this.playerGeneral(), null);
+        this._abilityFeedback(id, used);
+        return used;
+      }
+      this.abilityMode = this.abilityMode === id ? null : id;
+      if (ZS.UI && ZS.UI.updateBattleAbilities) ZS.UI.updateBattleAbilities();
+      if (this.abilityMode && ZS.UI) {
+        ZS.UI.say(ZS.i18n.t("battle.ability.target." + id), 2600);
+      }
+      return true;
+    },
+
+    castAbility(x, y) {
+      const id = this.abilityMode;
+      if (!id || !this.scen) return false;
+      const foe = this.unitAt(x, y, 1);
+      const target = id === "disorder" ? foe : foe || { x, y };
+      const used = this.scen.useAbility(id, this.playerGeneral(), target);
+      this._abilityFeedback(id, used);
+      if (used) {
+        this.marks.push({ x, y, t: 1.1, kind: "ability" });
+        if (this.marks.length > 12) this.marks.shift();
+        this.abilityMode = null;
+      }
+      if (ZS.UI && ZS.UI.updateBattleAbilities) ZS.UI.updateBattleAbilities();
+      return used;
+    },
+
+    _abilityFeedback(id, used) {
+      if (!ZS.UI) return;
+      if (used) ZS.UI.say(ZS.i18n.t("battle.ability.used." + id), 1800);
+      else {
+        const error = (this.scen.abilities && this.scen.abilities.lastError) || "invalid_target";
+        ZS.UI.say(ZS.i18n.t("battle.ability.err." + error), 2600);
+      }
+    },
+
     /* ---------- keyboard ---------- */
 
     key(e) {
@@ -288,11 +353,26 @@
         case "f":
           this.cycleFormation();
           break;
+        case "q":
+          this.beginAbility("charge");
+          break;
+        case "w":
+          this.beginAbility("fire");
+          break;
+        case "e":
+          this.beginAbility("ambush");
+          break;
         case "g":
-          this.scen.useAbility("inspire");
+          this.beginAbility("inspire");
+          break;
+        case "r":
+          this.beginAbility("disorder");
           break;
         case "escape":
-          this.clear();
+          if (this.abilityMode) {
+            this.abilityMode = null;
+            if (ZS.UI && ZS.UI.updateBattleAbilities) ZS.UI.updateBattleAbilities();
+          } else this.clear();
           break;
         case " ":
           if (eng) eng.speed = eng.speed > 0 ? 0 : 1;

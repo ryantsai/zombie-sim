@@ -16,30 +16,30 @@ re-deriving anything.
 
 | | |
 |---|---|
-| **Phase** | **P3 — campaign skeleton** |
-| **Status** | ✅ **complete** (P0–P3 ✅) |
-| **Verify** | `npm test` — `test/sanguo-p3.js` **131 / 0**: map invariants (57 commanderies, connected graph, symmetric adjacency, every seat inside its own cell), the general almanac wired through the roster seam, the whole player order set and every refusal, **ten seasons with no broken invariant**, determinism on a seed, autosave → reload → resume → keep playing, the occupation mechanics and the anti-chain property, the picker, the view and its teardown. P0 **48 / 0** (now including the module manifest), P1 **62 / 0**, pages **29 / 0**, `tools/check-generals.js` 200 valid, `oxlint` runs first<br>Campaign pacing (`test/campaign-sweep.js`, 20 seeds): **1.58 commanderies change hands per season**, longest single-stack run **4**, 106% of the men still on the board, 22 → **12.8** factions over 30 years<br>Formation browser probe: all five shapes march and settle at **6–11 px mean slot error**; a 35% casualty cut regenerates a 150-man square to exactly 98 slots. Aggressive 16-seed sweep: **16/16 resolve in 40.8–129.6 s**, no stalemates; seed 47 repeats exactly at 78.367 s. Earlier P2 probe: 6/6 passive samples resolve in 62–119 s; headed Chrome holds **60.0 fps at 2,000/side**; original three pages boot clean<br>P1 baseline: 62 / 45 / 23 assertions; 16-seed sweep green before P2 |
+| **Phase** | **P7 — complete v1 campaign** |
+| **Status** | ✅ **complete** (P0–P7 ✅) |
+| **Verify** | `npm test` now runs every phase suite: P0 boot/font/save/file://; P1 deterministic real-time battle; P3 campaign; P4 map/handoff/turn/battle; P5 generals/duels/abilities/UI; P6 doctrines/events/logistics/politics/victory/RemoteStore; P7 deterministic long-campaign sweep; original-page regression; 200-general validator. `test/sanguo-map-shots.js` renders all five biomes, three towns and three forts for visual inspection. |
 | **Updated** | 2026-08-31 |
 
-### Next action
+### Completed v1 slice
 
-**Start P4 — the handoff.** P3 is complete: the paper map, 57 commanderies,
-22 warlords, armies that march, the four-phase season, recruit / raise /
-develop / assign / march, a greedy AI planner, and the campaign save section.
-The 200-general almanac is wired in through `js/campaign/roster.js`.
-
-P4 is `BattleSetup` / `BattleResult` for real: a campaign clash drops into
-`ScenarioSanguo` and feeds losses, xp, injuries and territory back.
-**The seam is already in place** — `js/campaign/autoresolve.js` returns the
-§4.3 `BattleResult` shape today, and `ZS.Roster.snapshot(id)` returns the
-§4.3 general snapshot, so P4 replaces an implementation rather than inventing
-a contract. `field.kind` = `open` first, then `town` and `fort`, which is also
-where issue 4's terrain comes back.
-
-Battle pacing remains deliberately open under issue 3. The formation pass added
-`scenario.stallGiveups` instrumentation; its first aggressive-order sweep shows
-the watchdog is active often enough that the timeout must not be tuned in
-isolation.
+- Campaign clashes now suspend the season, enter the exact generated real-time
+  battlefield, and return losses, territory, XP, injury, capture, death and
+  duel logs exactly once.
+- Battlefields ship as five open-country biomes, three dense town street plans,
+  and three gated fort/castle plans with real collision, LOS, terrain costs,
+  breach state, reserve routes and rout exits.
+- The 200-person roster has levels, quadratic XP, unlocks, equipment, loyalty,
+  wounds, rest, capture/recruitment, defection, permadeath and deterministic
+  best-of-five duels. Five active abilities are commandable from the HUD.
+- Campaign depth includes visible choice-driven Tales, province specialties,
+  capital/depot supply, seasonal politics, seven faction doctrines, a
+  pluggable mandate goal, persistent victory card and tested RemoteStore
+  fallback/conflict behavior.
+- The design research translated into mechanics rather than copied chrome:
+  terrain and supply shape operations, officer identity drives progression,
+  Tales expose consequential choices, sieges stage combat through a gate, and
+  doctrines give rival houses distinct strategic priorities.
 
 ---
 
@@ -53,10 +53,10 @@ Legend: ☐ not started · 🚧 in progress · ✅ done · ⛔ blocked
 | P1 | Skirmish battle: `ScenarioSanguo` + command layer | ✅ |
 | P2 | Battle depth: formations, morale, abilities, fixed step, LOD | ✅ |
 | P3 | Campaign skeleton: map, provinces, armies, turn phases | ✅ |
-| P4 | The handoff: `BattleSetup`/`BattleResult`, field kinds, auto-resolve | ☐ |
-| P5 | Generals as RPG: xp, skills, items, loyalty, duels | ☐ |
-| P6 | AI factions, events, after-action card, `RemoteStore` | ☐ |
-| P7 | Balance, content, audio | 🚧 art system done; balance still open |
+| P4 | The handoff: `BattleSetup`/`BattleResult`, field kinds, auto-resolve | ✅ |
+| P5 | Generals as RPG: xp, skills, items, loyalty, duels | ✅ |
+| P6 | AI factions, events, after-action card, `RemoteStore` | ✅ |
+| P7 | Balance, content, audio | ✅ |
 
 ### P7 partial: the art + audio system
 
@@ -85,11 +85,15 @@ The music wires into `ZS.App.go(state)` — each view declares its own
 soundtrack (`menu: 'menu'`, `battle: 'battle'`) and the shell handles
 the rest. Settings.music flows into `music.setVolume` automatically.
 
-### What P7 still needs
+### P7 completion notes
 
-- Battle balance — pacing (the 60-180 s window from §1), unit composition, ability tuning
-- Content — province almanac, dialogue, events, after-action card copy (the 200-general roster is complete)
-- The `RemoteStore` work that was deferred from P6
+- The unchanged P1 reference battle resolves inside its 60–180 second window.
+- The 240-season deterministic AI sweep reaches a mandate winner without an
+  early map collapse, replays byte-for-byte, exercises Tales and preserves all
+  campaign/army/officer invariants. A human focusing rival seats can finish
+  sooner; the long horizon is an AI-vs-AI safety and convergence guard.
+- The bundled font now covers 1,233 harvested glyphs (348 KB WOFF2) after the
+  complete campaign/event/battle vocabulary was added.
 
 ---
 
@@ -362,7 +366,8 @@ live in `SANGUO-DESIGN.md` §11.)
 8. **`ZS.i18n.nc()`** is the compact number form (`8萬` / `80K`); `n()` stays
    exact and grouped. §6.4 asked for locale-configured grouping without naming
    the split.
-9. **`open` is a bare plain in P1, not the river/hills/forest §4.3 describes.**
+9. **`open` was intentionally a bare plain in P1; P4 replaced it with the
+   complete river/hills/forest terrain system from §4.3.**
    `world.water()` only runs its pinned, scenario-placed path when *both*
    `riverBaseX` and `lake` are passed; with one of them missing it falls
    through to the generative branch, which laid a river diagonally across the

@@ -17,7 +17,15 @@
      const ff = new ZS.FlowField(nav);
      ff.build(goalX, goalY);
      ff.sample(x, y, out);   // out.x, out.y = unit vector downhill; false if unreachable
-     ff.distAt(x, y);        // path cost to the goal, or Infinity */
+     ff.distAt(x, y);        // path cost to the goal, or Infinity
+
+   Obstacle-heavy scenarios may opt into the other Nav collision mask and a
+   deterministic traversal-cost grid without changing the default:
+
+     const ff = new ZS.FlowField(nav, {
+       collisionMask: true,  // floors / intact doors are blocked
+       moveCost,             // Uint8Array, 10 = ordinary ground
+     }); */
 (() => {
   "use strict";
   const ZS = (window.ZS = window.ZS || {});
@@ -31,8 +39,24 @@
   const INV = 1 / Math.SQRT2;
 
   class FlowField {
-    constructor(nav) {
+    constructor(nav, profile, moveCost) {
       this.nav = nav;
+      /* Backwards compatible forms:
+
+           new FlowField(nav)                         original behaviour
+           new FlowField(nav, true, moveCost)         compact collision profile
+           new FlowField(nav, { collisionMask, moveCost })
+
+         `collisionMask` is the historical `isZombie` argument on ZS.Nav. It
+         is deliberately named for what it does here: select which cells a
+         group treats as solid. */
+      if (profile && typeof profile === "object" && !ArrayBuffer.isView(profile)) {
+        this.collisionMask = !!profile.collisionMask;
+        this.moveCost = profile.moveCost || null;
+      } else {
+        this.collisionMask = !!profile;
+        this.moveCost = moveCost || null;
+      }
       this.w = nav.w | 0;
       this.h = nav.h | 0;
       this.n = this.w * this.h;
@@ -73,16 +97,17 @@
 
     build(x, y) {
       const nav = this.nav;
+      const collisionMask = this.collisionMask;
       this.reqI = nav.idx(x, y);
       /* A build that cannot start invalidates the field. Leaving `built` set
          meant the previous goal's costs were still sitting in the arrays, so
          `distAt` cheerfully answered for a destination this field knows
          nothing about — and an impossible order was accepted as reachable. */
       let gi = this.reqI;
-      if (gi < 0 || !nav.isWalkable(x, y, false)) {
+      if (gi < 0 || !nav.isWalkable(x, y, collisionMask)) {
         /* Ordered onto a wall or off the map: aim at the nearest open ground
            instead of refusing the order outright. */
-        const p = nav.nearestWalkable(x, y, 400, false);
+        const p = nav.nearestWalkable(x, y, 400, collisionMask);
         if (!p) {
           this.built = false;
           return false;
@@ -107,7 +132,8 @@
       this._push(gi, 0);
 
       const w = this.w,
-        h = this.h;
+        h = this.h,
+        terrain = this.moveCost;
       while (this.hn > 0) {
         const i = this._pop();
         if (this.done[i]) continue; // a stale entry from before a shorter path
@@ -122,16 +148,20 @@
           const ni = ny * w + nx;
           /* Walkability is asked in world coordinates so doors, water and
              building interiors all answer through the one nav opinion. */
-          if (!nav.isWalkable(nx * CELL + 10, ny * CELL + 10, false)) continue;
+          if (!nav.isWalkable(nx * CELL + 10, ny * CELL + 10, collisionMask)) continue;
           if (d >= 4) {
             /* No cutting a diagonal between two blocked orthogonals. */
             if (
-              !nav.isWalkable(nx * CELL + 10, iy * CELL + 10, false) ||
-              !nav.isWalkable(ix * CELL + 10, ny * CELL + 10, false)
+              !nav.isWalkable(nx * CELL + 10, iy * CELL + 10, collisionMask) ||
+              !nav.isWalkable(ix * CELL + 10, ny * CELL + 10, collisionMask)
             )
               continue;
           }
-          const nc = ci + DC[d];
+          /* Cost values are integer tenths: 10 preserves the old cost, 9 is
+             a road, 17 a marsh. A zero/uninitialised cell is ordinary ground
+             so callers may fill only the exceptional cells. */
+          const step = terrain ? (terrain[ni] || 10) / 10 : 1;
+          const nc = ci + DC[d] * step;
           if (nc < this.cost[ni]) {
             this.cost[ni] = nc;
             /* The neighbour's downhill direction points back at `i`, i.e. the

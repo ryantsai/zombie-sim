@@ -65,15 +65,18 @@ async function main() {
       timeout: 10000,
     });
 
-    const boot = await page.evaluate((scen) => ({
-      scen: ZS.debug.scenario.constructor.name,
-      agents: ZS.Sim.agents.length,
-      worldW: ZS.debug.world.w,
-      worldH: ZS.debug.world.h,
-      zoom: ZS.debug.cam.zoom > 0,
-      autoStarted: !!ZS.engine && ZS.engine.running,
-      expected: scen,
-    }), p.scen);
+    const boot = await page.evaluate(
+      (scen) => ({
+        scen: ZS.debug.scenario.constructor.name,
+        agents: ZS.Sim.agents.length,
+        worldW: ZS.debug.world.w,
+        worldH: ZS.debug.world.h,
+        zoom: ZS.debug.cam.zoom > 0,
+        autoStarted: !!ZS.engine && ZS.engine.running,
+        expected: scen,
+      }),
+      p.scen,
+    );
     ok("auto-starts without ZS_MANUAL_BOOT", boot.autoStarted);
     ok("runs " + p.scen, boot.scen === p.scen, boot.scen);
     ok("populated (" + boot.agents + " agents)", boot.agents >= p.minAgents, boot);

@@ -50,9 +50,13 @@
       this.provinces = {}; // id -> live record
       this.factions = {}; // id -> live record
       this.armies = {}; // id -> ZS.Army record
+      this.generals = {}; // id -> mutable ZS.General record (all 200, including free officers)
       this.nextArmyId = 1;
       this.log = []; // world-phase report, newest last, trimmed
       this.over = null; // null | { winner: factionId }
+      this.goal = { type: "capitals" };
+      this.eventQueue = [];
+      this.eventHistory = [];
       this.map = ZS.CampaignMap.build();
     }
 
@@ -90,6 +94,8 @@
         };
       }
 
+      if (ZS.General) camp.generals = ZS.General.records(null, ZS.data.factions, camp.year);
+
       for (const f of ZS.data.factions) {
         const held = f.start.provinces.filter((id) => camp.provinces[id]);
         camp.factions[f.id] = {
@@ -100,7 +106,10 @@
              actually carries (js/campaign/roster.js). A warlord the almanac has
              no entry for simply starts alone — a thin campaign, never a broken
              record. */
-          generals: ZS.Roster.forFaction(f.id),
+          generals: ZS.Roster.forFaction(f.id).filter((id) => {
+            const g = camp.generals[id];
+            return !g || (!g.dead && !g.capturedBy && g.location !== "unavailable");
+          }),
           alive: held.length > 0,
           isPlayer: f.id === playerFactionId,
         };
@@ -131,6 +140,8 @@
         if (held.length) camp.appointGovernor(f.capital);
       }
 
+      camp.reconcileGenerals();
+      camp.syncGeneralLocations();
       camp.recount();
       return camp;
     }
@@ -152,6 +163,17 @@
     factionDef(id) {
       for (const f of ZS.data.factions) if (f.id === id) return f;
       return null;
+    }
+
+    factionHome(id) {
+      const fd = this.factionDef(id);
+      if (fd && this.owner(fd.capital) === id) return fd.capital;
+      const held = this.provincesOf(id);
+      return held.length ? held[0] : null;
+    }
+
+    general(id) {
+      return this.generals[id] || null;
     }
 
     player() {
@@ -201,7 +223,13 @@
       if (!pr || !pd || !pr.owner) return 0;
       const base = BASE_INCOME[pd.size] * (1 + pr.dev.income * 0.25);
       const willing = 0.5 + pr.loyalty / 200;
-      return Math.round(base * willing * ZS.Roster.governBonus(pr.governor));
+      const specialty = ZS.CampaignLogistics ? ZS.CampaignLogistics.specialty(pd) : null;
+      return Math.round(
+        base *
+          willing *
+          ZS.Roster.governBonus(pr.governor, this) *
+          (specialty ? specialty.income || 1 : 1),
+      );
     }
 
     foodYield(id) {
@@ -213,14 +241,20 @@
       /* Autumn is the harvest; winter takes it back. The season is the only
          reason a campaign turn is a season and not a month. */
       const seasonal = [1, 1.05, 1.5, 0.55][this.season];
-      return Math.round(base * willing * seasonal);
+      const specialty = ZS.CampaignLogistics ? ZS.CampaignLogistics.specialty(pd) : null;
+      return Math.round(base * willing * seasonal * (specialty ? specialty.food || 1 : 1));
     }
 
     recruitCap(id) {
       const pr = this.provinces[id];
       const pd = this.def(id);
       if (!pr || !pd) return 0;
-      const cap = Math.round(BASE_RECRUIT[pd.size] * (1 + pr.dev.recruit * 0.3));
+      const specialty = ZS.CampaignLogistics ? ZS.CampaignLogistics.specialty(pd) : null;
+      const cap = Math.round(
+        BASE_RECRUIT[pd.size] *
+          (1 + pr.dev.recruit * 0.3) *
+          (specialty ? specialty.recruit || 1 : 1),
+      );
       /* An unwilling province will not give you its sons. */
       return Math.max(0, Math.round(cap * (0.4 + pr.loyalty / 170)) - pr.garrison);
     }
@@ -230,7 +264,9 @@
       if (!pr || DEV_TRACKS.indexOf(track) < 0) return Infinity;
       const lvl = pr.dev[track] | 0;
       if (lvl >= DEV_MAX[track]) return Infinity;
-      return DEV_COST[track] * (lvl + 1);
+      const specialty = ZS.CampaignLogistics ? ZS.CampaignLogistics.specialty(this.def(id)) : null;
+      const modifier = track === "wall" && specialty ? specialty.wallCost || 1 : 1;
+      return Math.round(DEV_COST[track] * (lvl + 1) * modifier);
     }
 
     /* Where loyalty is heading if nothing is done: a well-fed, walled, garrisoned
@@ -247,6 +283,243 @@
       const f = this.factions[pr.owner];
       if (f && f.food <= 0) t -= 25;
       return ZS.clamp(t, 5, 100);
+    }
+
+    /* ---- generals ---------------------------------------------------- */
+
+    /* Faction roster arrays remain the fast P3 assignment seam; the mutable
+       record is authoritative for allegiance/death/capture. Reconciliation
+       makes old saves (which had only the arrays) and new saves agree. */
+    reconcileGenerals() {
+      if (!ZS.General) return;
+      const listed = new Set();
+      for (const fid in this.factions) {
+        const f = this.factions[fid];
+        const clean = [];
+        for (const id of f.generals || []) {
+          const g = this.generals[id];
+          if (!g || listed.has(id) || g.dead || g.capturedBy || g.location === "unavailable") {
+            continue;
+          }
+          if (g.allegiance && g.allegiance !== fid) continue;
+          g.allegiance = fid;
+          clean.push(id);
+          listed.add(id);
+        }
+        f.generals = clean;
+      }
+      for (const id in this.generals) {
+        const g = this.generals[id];
+        if (
+          listed.has(id) ||
+          !g.allegiance ||
+          g.dead ||
+          g.capturedBy ||
+          g.location === "unavailable"
+        ) {
+          continue;
+        }
+        const f = this.factions[g.allegiance];
+        if (f) {
+          f.generals.push(id);
+          listed.add(id);
+        } else {
+          g.allegiance = null;
+          g.location = "free";
+        }
+      }
+    }
+
+    /* Location is persisted, but assignments are still represented by the
+       existing army/governor ids. Recompute at every save and public lookup so
+       a P3 Turn.assign() immediately becomes an accurate P5 record. */
+    syncGeneralLocations() {
+      for (const id in this.generals) {
+        const g = this.generals[id];
+        if (g.dead) {
+          g.location = "dead";
+          continue;
+        }
+        if (g.capturedBy) {
+          g.location = "captured:" + g.capturedBy;
+          continue;
+        }
+        if (g.location === "unavailable") continue;
+        if (!g.allegiance) {
+          g.location = "free";
+          continue;
+        }
+        g.location = this.factionHome(g.allegiance) || "free";
+      }
+      for (const pid in this.provinces) {
+        const id = this.provinces[pid].governor;
+        const g = id && this.generals[id];
+        if (g && !g.dead && !g.capturedBy) g.location = pid;
+      }
+      for (const aid in this.armies) {
+        for (const id of this.armies[aid].generals) {
+          const g = this.generals[id];
+          if (g && !g.dead && !g.capturedBy) g.location = "army:" + aid;
+        }
+      }
+      return this.generals;
+    }
+
+    generalLocation(id) {
+      this.syncGeneralLocations();
+      const g = this.generals[id];
+      return g ? g.location : null;
+    }
+
+    freeGenerals() {
+      if (ZS.General) ZS.General.releaseEligible(this, this.year);
+      this.syncGeneralLocations();
+      const out = [];
+      for (const id in this.generals) {
+        const g = this.generals[id];
+        if (!g.dead && !g.capturedBy && g.location === "free" && g.fromYear <= this.year) {
+          out.push(id);
+        }
+      }
+      out.sort();
+      return out;
+    }
+
+    detachGeneral(id, removeFromRoster) {
+      let changed = false;
+      for (const aid in this.armies) {
+        if (ZS.Army.unassign(this.armies[aid], id)) changed = true;
+      }
+      for (const pid in this.provinces) {
+        if (this.provinces[pid].governor === id) {
+          this.provinces[pid].governor = null;
+          changed = true;
+        }
+      }
+      if (removeFromRoster) {
+        for (const fid in this.factions) {
+          const f = this.factions[fid];
+          const i = f.generals.indexOf(id);
+          if (i >= 0) {
+            f.generals.splice(i, 1);
+            changed = true;
+          }
+        }
+      }
+      return changed;
+    }
+
+    adjustGeneralLoyalty(id, delta) {
+      const g = this.generals[id];
+      return g && ZS.General ? ZS.General.adjustLoyalty(g, delta) : null;
+    }
+
+    restGeneral(id, provinceId, turns) {
+      const g = this.generals[id];
+      if (!g || !ZS.General || g.dead || g.capturedBy) return { ok: false, err: "unavailable" };
+      this.syncGeneralLocations();
+      let at = g.location;
+      if (at && at.startsWith("army:")) {
+        const a = this.armies[at.slice(5)];
+        at = a && !ZS.Army.isMarching(a) ? a.at : null;
+      }
+      const pid = provinceId || at;
+      if (!pid || pid !== at || this.owner(pid) !== g.allegiance) {
+        return { ok: false, err: "not_resting_in_city" };
+      }
+      return Object.assign({ ok: true, provinceId: pid }, ZS.General.rest(g, turns));
+    }
+
+    advanceGenerals(turns) {
+      if (!ZS.General) return [];
+      const healed = [];
+      for (const id in this.generals) {
+        const g = this.generals[id];
+        const before = g.injury;
+        ZS.General.advanceInjury(g, Math.max(0, turns | 0));
+        if (before !== "none" && g.injury === "none") healed.push(id);
+      }
+      ZS.General.releaseEligible(this, this.year);
+      return healed;
+    }
+
+    defectGeneral(id, factionId, force) {
+      const g = this.generals[id];
+      const target = this.factions[factionId];
+      if (!g || !target || g.dead || g.location === "unavailable" || !ZS.General) return false;
+      if (!force && !ZS.General.canDefect(g)) return false;
+      this.detachGeneral(id, true);
+      g.allegiance = factionId;
+      g.capturedBy = null;
+      g.location = this.factionHome(factionId) || "free";
+      g.loyalty = ZS.clamp(force ? Math.min(g.loyalty, 45) : 50, 0, 100);
+      if (!target.generals.includes(id)) target.generals.push(id);
+      return true;
+    }
+
+    recruitCaptured(id, factionId) {
+      const g = this.generals[id];
+      if (!g || g.capturedBy !== factionId) return false;
+      return this.defectGeneral(id, factionId, true);
+    }
+
+    executeCaptured(id, factionId) {
+      const g = this.generals[id];
+      if (!g || g.dead || g.capturedBy !== factionId) return false;
+      this.detachGeneral(id, true);
+      g.dead = true;
+      g.capturedBy = null;
+      g.location = "dead";
+      return true;
+    }
+
+    releaseGeneral(id) {
+      const g = this.generals[id];
+      if (!g || g.dead) return false;
+      this.detachGeneral(id, true);
+      g.allegiance = null;
+      g.capturedBy = null;
+      g.location = "free";
+      g.loyalty = ZS.clamp(g.loyalty, 0, 100);
+      return true;
+    }
+
+    applyGeneralResult(id, result) {
+      const g = this.generals[id];
+      if (!g || !ZS.General) return { ok: false, err: "unknown_general", id };
+      if (g.dead) return { ok: false, err: "general_dead", id };
+      const data = result || {};
+      const progress = ZS.General.gainXp(g, data.xpGained);
+      if (typeof data.loyaltyDelta === "number") {
+        ZS.General.adjustLoyalty(g, data.loyaltyDelta);
+      }
+      const outcome = ZS.General.OUTCOMES.includes(data.outcome) ? data.outcome : "ok";
+      if (outcome === "wounded") {
+        ZS.General.wound(g, data.injury || "wounded", data.injuryT);
+      } else if (outcome === "captured") {
+        if (!data.captor || !this.factions[data.captor]) {
+          return { ok: false, err: "missing_captor", id, progress };
+        }
+        this.detachGeneral(id, true);
+        g.capturedBy = data.captor;
+        g.location = "captured:" + data.captor;
+        ZS.General.adjustLoyalty(g, -10);
+      } else if (outcome === "killed") {
+        this.detachGeneral(id, true);
+        g.dead = true;
+        g.capturedBy = null;
+        g.location = "dead";
+      }
+      return {
+        ok: true,
+        id,
+        outcome,
+        progress,
+        injury: g.injury,
+        injuryT: g.injuryT,
+        loyalty: g.loyalty,
+        location: g.location,
+      };
     }
 
     /* ---- mutation ----------------------------------------------------- */
@@ -268,8 +541,8 @@
       const order = pool.slice().sort((x, y) => {
         if (fd && x === fd.leader) return -1;
         if (fd && y === fd.leader) return 1;
-        const sx = ZS.Roster.stats(x),
-          sy = ZS.Roster.stats(y);
+        const sx = ZS.Roster.stats(x, this),
+          sy = ZS.Roster.stats(y, this);
         return sy.tong + sy.wu - (sx.tong + sx.wu);
       });
       for (const gid of order) {
@@ -289,7 +562,7 @@
         bz = -1;
       for (const gid of pool) {
         if (this.isBusy(gid, null)) continue;
-        const z = ZS.Roster.stats(gid).zheng;
+        const z = ZS.Roster.stats(gid, this).zheng;
         if (z > bz) {
           bz = z;
           best = gid;
@@ -382,7 +655,16 @@
           last = fid;
         }
       }
-      if (liveCount <= 1 && !this.over) this.over = { winner: last };
+      if (!this.over) {
+        this.over = ZS.CampaignVictory
+          ? ZS.CampaignVictory.check(this, this.goal)
+          : liveCount <= 1
+            ? { winner: last }
+            : null;
+      }
+      if (ZS.General) ZS.General.releaseEligible(this, this.year);
+      this.reconcileGenerals();
+      this.syncGeneralLocations();
       return counts;
     }
 
@@ -406,6 +688,8 @@
        `playerFactionId` sit at the top because SaveManager.listSlots() reads
        them to label a save slot without parsing the rest. */
     capture() {
+      this.reconcileGenerals();
+      this.syncGeneralLocations();
       return {
         seed: this.seed,
         turn: this.turn,
@@ -416,6 +700,10 @@
         provinces: this.provinces,
         factions: this.factions,
         armies: this.armies,
+        generals: this.generals,
+        goal: this.goal,
+        eventQueue: this.eventQueue,
+        eventHistory: this.eventHistory,
         log: this.log,
         over: this.over,
       };
@@ -430,6 +718,19 @@
       camp.nextArmyId = Math.max(1, data.nextArmyId | 0);
       camp.log = Array.isArray(data.log) ? data.log : [];
       camp.over = data.over || null;
+      camp.goal =
+        data.goal && (data.goal.type === "capitals" || data.goal.type === "provinces")
+          ? { type: data.goal.type }
+          : { type: "capitals" };
+      camp.eventQueue = Array.isArray(data.eventQueue)
+        ? data.eventQueue.filter((event) => event && typeof event.id === "string")
+        : [];
+      camp.eventHistory = Array.isArray(data.eventHistory)
+        ? data.eventHistory.filter((id) => typeof id === "string").slice(-8)
+        : [];
+      if (ZS.General) {
+        camp.generals = ZS.General.records(data.generals, ZS.data.factions, camp.year);
+      }
 
       /* Rebuild from the *current* province and faction lists, not from what
          the save happens to contain. A build that added a province must not
@@ -458,7 +759,8 @@
           id: f.id,
           gold: src ? src.gold | 0 : f.start.gold,
           food: src ? src.food | 0 : f.start.food,
-          generals: src && Array.isArray(src.generals) ? src.generals : ZS.Roster.forFaction(f.id),
+          generals:
+            src && Array.isArray(src.generals) ? src.generals.slice() : ZS.Roster.forFaction(f.id),
           alive: src ? !!src.alive : false,
           isPlayer: f.id === camp.playerFactionId,
         };
@@ -481,6 +783,8 @@
           camp.armies[a.id] = a;
         }
       }
+      camp.reconcileGenerals();
+      camp.syncGeneralLocations();
       camp.recount();
       return camp;
     }

@@ -68,7 +68,9 @@ async function main() {
     if (m.type() === "error") errors.push(m.text());
   });
   page.on("weberror", (e) => errors.push(String(e.error())));
-  page.on("requestfailed", (r) => errors.push("REQFAIL " + r.url() + " " + (r.failure() || {}).errorText));
+  page.on("requestfailed", (r) =>
+    errors.push("REQFAIL " + r.url() + " " + (r.failure() || {}).errorText),
+  );
   await page.goto(base + "/index.html");
   await page.waitForFunction(() => window.ZS && ZS.App && ZS.App.booted === true, null, {
     timeout: 15000,
@@ -187,7 +189,11 @@ async function main() {
   ok("...and several are playable", start.playable >= 3, start.playable);
   eq("every faction's banner resolves to a real flag preset", start.badFlag.length, 0);
   eq("every warlord starts holding their own capital", start.badCapital.length, 0);
-  ok("everyone starts with a field army, not just walls", start.fieldArmies >= start.factions, start);
+  ok(
+    "everyone starts with a field army, not just walls",
+    start.fieldArmies >= start.factions,
+    start,
+  );
   ok("the player's holdings are seeded", start.caoProvinces >= 4, start.caoProvinces);
   ok("...and their men", start.caoTroops > 5000, start.caoTroops);
   ok("the player faction is flagged as the player's", start.isPlayer);
@@ -286,10 +292,17 @@ async function main() {
   eq("...and a mounted hero leads from the cavalry", gen.snapUnit, "cav");
   eq("the courtesy name comes through", gen.style, "雲長");
   ok("the opening position staffs its armies", gen.staffed >= 10, gen.staffed);
-  ok("...and every warlord with officers to spare seats one at home",
-    gen.shouldSeat > 0 && gen.didSeat === gen.shouldSeat, gen);
+  ok(
+    "...and every warlord with officers to spare seats one at home",
+    gen.shouldSeat > 0 && gen.didSeat === gen.shouldSeat,
+    gen,
+  );
   eq("nobody is in two places at once", gen.doubled, 0);
-  ok("the player's lord rides with the army", gen.caoGenerals.indexOf("cao_cao") === 0, gen.caoGenerals);
+  ok(
+    "the player's lord rides with the army",
+    gen.caoGenerals.indexOf("cao_cao") === 0,
+    gen.caoGenerals,
+  );
   ok("...with a full staff behind him", gen.caoRoster >= 10, gen.caoRoster);
   eq("a warlord the almanac skipped starts alone rather than broken", gen.thinFaction, 0);
 
@@ -322,7 +335,10 @@ async function main() {
   ok("a general can be released back to the roster", assign.release.ok && assign.releasedOff);
   ok("Assign puts a general on a stack", assign.toArmy.ok && assign.onArmy, assign);
   eq("...and a fourth is refused", assign.fullArmy.err, "campaign.err.armyFull");
-  ok("Assign to a seat takes them off the stack first", assign.toSeat.ok && assign.leftArmy && assign.seated);
+  ok(
+    "Assign to a seat takes them off the stack first",
+    assign.toSeat.ok && assign.leftArmy && assign.seated,
+  );
   ok("Assign to nothing returns them to the roster", assign.toRoster.ok && assign.unseated);
   eq("another warlord's officer takes no orders", assign.notOurs.err, "campaign.err.notOurs");
 
@@ -372,16 +388,28 @@ async function main() {
   ok("Develop raises the track and charges for it", orders.develop.ok && orders.devLevel === 1);
   ok("...and the gold really left", orders.devPaid > 0, orders.devPaid);
   eq("Develop on someone else's province is refused", orders.devAgain.err, "campaign.err.notYours");
-  ok("Recruit adds exactly the men asked for", orders.recruit.ok && orders.recruited === 300, orders);
+  ok(
+    "Recruit adds exactly the men asked for",
+    orders.recruit.ok && orders.recruited === 300,
+    orders,
+  );
   eq("...and over the cap is refused", orders.overCap.err, "campaign.err.overCap");
   ok("Raise takes men out of the garrison into a new stack", orders.raisedArmy === 1);
   eq("...at the strength asked for", orders.raisedTroops, 500);
-  eq("...and it will not strip the garrison bare", orders.garrisonFloor.err, "campaign.err.garrisonFloor");
+  eq(
+    "...and it will not strip the garrison bare",
+    orders.garrisonFloor.err,
+    "campaign.err.garrisonFloor",
+  );
   ok("March sets a route", orders.march.ok && orders.marching, orders.march);
   eq("...to nowhere is refused", orders.marchNowhere.err, "campaign.err.noProvince");
   ok("...and a refused march leaves the current one alone", orders.stillMarching);
   ok("Halt stops the column", orders.halt.ok && orders.halted);
-  eq("an enemy stack takes no orders from the player", orders.enemyMarch.err, "campaign.err.notYours");
+  eq(
+    "an enemy stack takes no orders from the player",
+    orders.enemyMarch.err,
+    "campaign.err.notYours",
+  );
   ok("the treasury never went negative", orders.gold >= 0 && orders.food >= 0, orders);
 
   /* ---- ten seasons --------------------------------------------------- */
@@ -513,7 +541,11 @@ async function main() {
   eq("...and a conquest is not loved", occ.loyalty, 30);
   ok("the holding garrison scales with the province", occ.before.cost === 260 * occ.size, occ);
   eq("a stack too small to garrison leaves everything it has", occ.spent.troops, 0);
-  ok("...and the province is still taken", occ.spent.owner === "cao_cao" && occ.spent.garrison === 120, occ.spent);
+  ok(
+    "...and the province is still taken",
+    occ.spent.owner === "cao_cao" && occ.spent.garrison === 120,
+    occ.spent,
+  );
 
   /* ---- determinism --------------------------------------------------- */
   console.log("\n[determinism]");
@@ -659,7 +691,18 @@ async function main() {
 
   const uiTurn = await page.evaluate(() => {
     const before = ZS.App.campaign.turn;
+    /* P6 Tales deliberately block the next season until their visible choice
+       is answered. Resolve a carried event first; this P3 assertion is still
+       about the End Season transaction rather than event UX. */
+    const eventChoice = document.querySelector("[data-event-choice]:not(:disabled)");
+    if (eventChoice) eventChoice.click();
+    /* P4 normally suspends on a player battle. This P3 regression is about
+       the original synchronous campaign bar, so exercise the persisted
+       auto-resolve preference explicitly. */
+    const priorAuto = ZS.App.settings.autoResolveDefault;
+    ZS.App.settings.autoResolveDefault = true;
     document.getElementById("btn-end-turn").click();
+    ZS.App.settings.autoResolveDefault = priorAuto;
     return {
       advanced: ZS.App.campaign.turn === before + 1,
       report: !!document.querySelector(".camp-report.on"),
@@ -685,7 +728,11 @@ async function main() {
     };
     return { en, zh };
   });
-  ok("the campaign bar speaks English on demand", /195|196/.test(loc.en.date) && /CE|Spring|Summer|Autumn|Winter/.test(loc.en.date), loc.en);
+  ok(
+    "the campaign bar speaks English on demand",
+    /195|196/.test(loc.en.date) && /CE|Spring|Summer|Autumn|Winter/.test(loc.en.date),
+    loc.en,
+  );
   ok("...and Chinese by default", /西元/.test(loc.zh.date), loc.zh);
   ok("the panel retitles with the locale", loc.en.panel !== loc.zh.panel, loc);
 
@@ -767,7 +814,10 @@ async function main() {
      game — and a script that genuinely failed to load would take a hundred
      assertions above down with it, so nothing is being hidden here. */
   const real = errors.filter(
-    (e) => !/subset-data\.js|ERR_FILE_NOT_FOUND|404|ERR_NO_BUFFER_SPACE|ERR_INSUFFICIENT_RESOURCES/.test(e),
+    (e) =>
+      !/subset-data\.js|ERR_FILE_NOT_FOUND|404|ERR_NO_BUFFER_SPACE|ERR_INSUFFICIENT_RESOURCES/.test(
+        e,
+      ),
   );
   ok("no unexpected console errors", real.length === 0, real.slice(0, 4));
 

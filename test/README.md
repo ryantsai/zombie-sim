@@ -7,14 +7,14 @@ assertion suites and the almanac gate, in the order that fails fastest:
 npm test
 ```
 
-| File | What it guards |
-|---|---|
-| `sanguo-p0.js` | Boot, store/auth/save round-trip, i18n, **the module manifest** (`ISSUES.md` #14) **and the font subset coverage check** — over http *and* `file://` |
-| `sanguo-p1.js` | The skirmish battle: deployment, the command layer, determinism, no hangs, clean teardown |
-| `sanguo-p3.js` | The campaign: map invariants, the general almanac, every order and its refusals, ten seasons of invariants, save/reload/resume |
-| `pages-regression.js` | That `zombiesim.html`, `battle.html` and `hold.html` still boot, and that each one delivers every module it loads — this is the only thing standing between the three original pages and a core change |
-| `sanguo-seed-sweep.js` | The long no-hang sweep. Slow; not in `npm test`, run it after touching battle movement |
-| `campaign-sweep.js` | Campaign pacing probe — how fast ground changes hands (`ISSUES.md` #10). Reports numbers, asserts nothing |
+| File                   | What it guards                                                                                                                                                                                         |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `sanguo-p0.js`         | Boot, store/auth/save round-trip, i18n, **the module manifest** (`ISSUES.md` #14) **and the font subset coverage check** — over http _and_ `file://`                                                   |
+| `sanguo-p1.js`         | The skirmish battle: deployment, the command layer, determinism, no hangs, clean teardown                                                                                                              |
+| `sanguo-p3.js`         | The campaign: map invariants, the general almanac, every order and its refusals, ten seasons of invariants, save/reload/resume                                                                         |
+| `pages-regression.js`  | That `zombiesim.html`, `battle.html` and `hold.html` still boot, and that each one delivers every module it loads — this is the only thing standing between the three original pages and a core change |
+| `sanguo-seed-sweep.js` | The long no-hang sweep. Slow; not in `npm test`, run it after touching battle movement                                                                                                                 |
+| `campaign-sweep.js`    | Campaign pacing probe — how fast ground changes hands (`ISSUES.md` #10). Reports numbers, asserts nothing                                                                                              |
 
 Screenshot helpers (`sanguo-shot.js`, `sanguo-battle-shot.js`,
 `sanguo-campaign-shot.js`, or `npm run shots`) write PNGs into `.verify/`,

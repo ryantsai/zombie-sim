@@ -514,12 +514,14 @@
   /* a worn dirt road through a list of points */
   function road(c, points, w, seed) {
     if (!points || points.length < 2) return;
-    c.fillStyle = "rgba(180,160,130,0.42)";
-    c.strokeStyle = INK_SOFT;
+    /* The road is a landscape wash, not an ink wall. The old implementation
+       assigned the tan to fillStyle but only stroked the path, so a 76px town
+       street became a solid INK_SOFT bar with 25px scallops. */
+    c.strokeStyle = "rgba(180,160,130,0.34)";
     c.lineWidth = w;
     c.lineCap = "round";
     c.lineJoin = "round";
-    ZS.wpoly(c, points, seed, w * 0.35, false);
+    ZS.wpoly(c, points, seed, Math.min(2.4, w * 0.05), false);
     c.stroke();
     // a faint centre line (a tire track / cart track feel)
     c.strokeStyle = "rgba(120,100,80,0.32)";

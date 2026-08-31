@@ -32,7 +32,7 @@ const MIME = {
     const ST = ["HOLD", "MOVE", "ATTACK", "CHARGE", "ROUT"];
     const step = 1 / 30;
     const rows = [];
-    for (const seed of [11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26]) {
+    for (const seed of [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]) {
       ZS.App.go("menu");
       ZS.App.go("battle", { setup: ZS.ScenarioSanguo.defaultSetup(seed) });
       const eng = ZS.engine,

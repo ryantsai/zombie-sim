@@ -15,7 +15,13 @@
    false` (localStorage), a write goes shadow -> main -> bak: a crash leaves a
    whole old or a whole new save, never a torn one, and `:bak` is read as a
    fallback when the main key is missing or unparseable. An atomic store
-   (a server PUT) skips the dance entirely. */
+   (a server PUT) skips the dance entirely.
+
+   Cloud fallback (§5.4). A RemoteStore is mirrored to a LocalStore after
+   successful reads and writes. If its bounded retries are exhausted,
+   SaveManager uses that mirror and sets cloudOutOfSync. Conflicts and other
+   permanent HTTP failures are still surfaced — silently overwriting a newer
+   cloud save would be worse than asking the player to resolve it. */
 (() => {
   "use strict";
   const ZS = (window.ZS = window.ZS || {});
@@ -40,6 +46,35 @@
     return !!v && typeof v === "object" && !Array.isArray(v);
   }
 
+  function isCloudStore(store) {
+    return !!(store && store.capabilities && store.capabilities.cloud);
+  }
+
+  function updatedAt(snap) {
+    const text = snap && snap.meta && snap.meta.updatedAt;
+    const time = text ? Date.parse(text) : NaN;
+    return Number.isFinite(time) ? time : 0;
+  }
+
+  function isFallbackError(err) {
+    return !!(
+      err &&
+      (err.code === "unreachable" ||
+        err.code === "server" ||
+        err.code === "malformed" ||
+        err.code === "unavailable")
+    );
+  }
+
+  function makeLocalFallback() {
+    if (!ZS.LocalStore || typeof ZS.LocalStore.available !== "function") return null;
+    try {
+      return ZS.LocalStore.available() ? new ZS.LocalStore() : null;
+    } catch {
+      return null;
+    }
+  }
+
   class SaveError extends Error {
     constructor(code, message, cause) {
       super(message || code);
@@ -53,6 +88,12 @@
     AUTOSAVE_SLOT,
     store: null,
     auth: null,
+    fallbackStore: null,
+    cloudOutOfSync: false,
+    lastCloudError: null,
+    lastFallbackError: null,
+    _cloudFaulted: false,
+    _cloudDirty: new Map(), // key -> "write" | "delete"; intentionally not saved
     sections: new Map(),
     playtimeSec: 0,
     createdAt: null,
@@ -61,9 +102,22 @@
 
     /* ---- wiring ---------------------------------------------------- */
 
-    bind(store, auth) {
+    bind(store, auth, opts) {
       this.store = store;
       this.auth = auth || ZS.Auth;
+      const o = opts || {};
+      this.fallbackStore = null;
+      if (isCloudStore(store)) {
+        this.fallbackStore = Object.prototype.hasOwnProperty.call(o, "fallbackStore")
+          ? o.fallbackStore
+          : makeLocalFallback();
+        if (this.fallbackStore === store) this.fallbackStore = null;
+      }
+      this.cloudOutOfSync = false;
+      this.lastCloudError = null;
+      this.lastFallbackError = null;
+      this._cloudFaulted = false;
+      this._cloudDirty.clear();
       return this;
     },
 
@@ -148,8 +202,7 @@
 
     /* ---- read / write ---------------------------------------------- */
 
-    async _write(key, text) {
-      const st = this.store;
+    async _writeTo(st, key, text) {
       if (!st) throw new SaveError("no_store", "SaveManager.bind() was never called");
       if (st.capabilities && st.capabilities.atomic) {
         await st.set(key, text);
@@ -172,8 +225,7 @@
       await st.remove(key + ":shadow");
     },
 
-    async _read(key) {
-      const st = this.store;
+    async _readFrom(st, key) {
       if (!st) throw new SaveError("no_store", "SaveManager.bind() was never called");
       const tryParse = (text) => {
         if (text === null) return null;
@@ -183,11 +235,256 @@
           return null;
         }
       };
-      let snap = tryParse(await st.get(key));
+      const main = await st.get(key);
+      let snap = tryParse(main);
       if (snap) return snap;
+      if (isCloudStore(st)) {
+        if (main !== null) {
+          throw new SaveError("malformed", "cloud save is not valid JSON");
+        }
+        return null;
+      }
       /* Main key absent or unparseable — fall back to the previous good save. */
       snap = tryParse(await st.get(key + ":bak"));
       return snap;
+    },
+
+    _refreshCloudState() {
+      this.cloudOutOfSync = this._cloudFaulted || this._cloudDirty.size > 0;
+      if (!this.cloudOutOfSync) this.lastCloudError = null;
+    },
+
+    _markCloudFault(err) {
+      this._cloudFaulted = true;
+      this.lastCloudError = err;
+      this._refreshCloudState();
+    },
+
+    _markCloudDirty(key, kind, err) {
+      this._cloudDirty.set(key, kind);
+      this._cloudFaulted = true;
+      this.lastCloudError = err;
+      this._refreshCloudState();
+    },
+
+    _markCloudClean(key) {
+      this._cloudDirty.delete(key);
+      this._cloudFaulted = false;
+      this._refreshCloudState();
+    },
+
+    async _mirrorWrite(key, text) {
+      if (!this.fallbackStore) return;
+      try {
+        await this._writeTo(this.fallbackStore, key, text);
+        this.lastFallbackError = null;
+      } catch (err) {
+        /* The cloud write is already durable. A broken optional mirror must
+           not turn that successful save into a failure. */
+        this.lastFallbackError = err;
+      }
+    },
+
+    async _fallbackWrite(key, text, cloudError) {
+      this._markCloudFault(cloudError);
+      if (!this.fallbackStore) throw cloudError;
+      try {
+        await this._writeTo(this.fallbackStore, key, text);
+      } catch (fallbackError) {
+        const err = new SaveError(
+          "fallback_failed",
+          "cloud and local fallback writes failed",
+          cloudError,
+        );
+        err.fallbackCause = fallbackError;
+        throw err;
+      }
+      this.lastFallbackError = null;
+      this._markCloudDirty(key, "write", cloudError);
+    },
+
+    async _write(key, text) {
+      const st = this.store;
+      if (!st) throw new SaveError("no_store", "SaveManager.bind() was never called");
+      if (!isCloudStore(st)) return this._writeTo(st, key, text);
+      try {
+        await this._writeTo(st, key, text);
+      } catch (err) {
+        if (!isFallbackError(err)) {
+          this._markCloudFault(err);
+          throw err;
+        }
+        await this._fallbackWrite(key, text, err);
+        return;
+      }
+      this._markCloudClean(key);
+      await this._mirrorWrite(key, text);
+    },
+
+    async _fallbackRead(key, cloudError) {
+      this._markCloudFault(cloudError);
+      if (!this.fallbackStore) throw cloudError;
+      let snap;
+      try {
+        snap = await this._readFrom(this.fallbackStore, key);
+      } catch (fallbackError) {
+        const err = new SaveError(
+          "fallback_failed",
+          "cloud and local fallback reads failed",
+          cloudError,
+        );
+        err.fallbackCause = fallbackError;
+        throw err;
+      }
+      this.lastFallbackError = null;
+      if (!snap) throw cloudError;
+      this._markCloudDirty(key, "write", cloudError);
+      return snap;
+    },
+
+    async _read(key) {
+      const st = this.store;
+      if (!st) throw new SaveError("no_store", "SaveManager.bind() was never called");
+      if (!isCloudStore(st)) return this._readFrom(st, key);
+
+      const dirty = this._cloudDirty.get(key);
+      if (dirty === "delete") return null;
+      if (dirty === "write" && this.fallbackStore) {
+        return this._readFrom(this.fallbackStore, key);
+      }
+
+      let snap;
+      try {
+        snap = await this._readFrom(st, key);
+      } catch (err) {
+        if (!isFallbackError(err)) {
+          this._markCloudFault(err);
+          throw err;
+        }
+        return this._fallbackRead(key, err);
+      }
+      if (snap) {
+        let local = null;
+        if (this.fallbackStore) {
+          try {
+            local = await this._readFrom(this.fallbackStore, key);
+            this.lastFallbackError = null;
+          } catch (err) {
+            /* A valid cloud snapshot remains usable when only its optional
+               local mirror is damaged. */
+            this.lastFallbackError = err;
+          }
+        }
+        if (local && updatedAt(local) > updatedAt(snap)) {
+          this._markCloudDirty(
+            key,
+            "write",
+            new SaveError("cloud_stale", "local fallback is newer than cloud"),
+          );
+          return local;
+        }
+        this._markCloudClean(key);
+        await this._mirrorWrite(key, JSON.stringify(snap));
+        return snap;
+      }
+
+      /* A local-only slot is the expected first-sync case. Keep it available
+         and mark it dirty so the next save uploads it. */
+      if (this.fallbackStore) {
+        const local = await this._readFrom(this.fallbackStore, key);
+        if (local) {
+          this._markCloudDirty(
+            key,
+            "write",
+            new SaveError("cloud_missing", "save exists only in local fallback"),
+          );
+          return local;
+        }
+      }
+      this._markCloudClean(key);
+      return null;
+    },
+
+    async _removeFrom(st, key) {
+      if (!st) return;
+      await st.remove(key);
+      await st.remove(key + ":shadow");
+      await st.remove(key + ":bak");
+    },
+
+    async _remove(key) {
+      const st = this.store;
+      if (!st) throw new SaveError("no_store", "SaveManager.bind() was never called");
+      if (!isCloudStore(st)) return this._removeFrom(st, key);
+      try {
+        await st.remove(key);
+      } catch (err) {
+        if (!isFallbackError(err)) {
+          this._markCloudFault(err);
+          throw err;
+        }
+        if (!this.fallbackStore) {
+          this._markCloudFault(err);
+          throw err;
+        }
+        try {
+          await this._removeFrom(this.fallbackStore, key);
+        } catch (fallbackError) {
+          this._markCloudFault(err);
+          const failure = new SaveError(
+            "fallback_failed",
+            "cloud and local fallback deletes failed",
+            err,
+          );
+          failure.fallbackCause = fallbackError;
+          throw failure;
+        }
+        this._markCloudDirty(key, "delete", err);
+        return;
+      }
+      this._markCloudClean(key);
+      if (this.fallbackStore) {
+        try {
+          await this._removeFrom(this.fallbackStore, key);
+          this.lastFallbackError = null;
+        } catch (err) {
+          this.lastFallbackError = err;
+        }
+      }
+    },
+
+    async _keys(prefix) {
+      const st = this.store;
+      if (!st) throw new SaveError("no_store", "SaveManager.bind() was never called");
+      if (!isCloudStore(st)) return st.keys(prefix);
+
+      let keys;
+      try {
+        keys = await st.keys(prefix);
+        this._cloudFaulted = false;
+        this._refreshCloudState();
+      } catch (err) {
+        if (!isFallbackError(err)) {
+          this._markCloudFault(err);
+          throw err;
+        }
+        if (!this.fallbackStore) {
+          this._markCloudFault(err);
+          throw err;
+        }
+        this._markCloudFault(err);
+        return Array.from(new Set(await this.fallbackStore.keys(prefix))).sort();
+      }
+
+      if (!this.fallbackStore || this._cloudDirty.size === 0) return keys;
+      const merged = new Set(keys);
+      const localKeys = new Set(await this.fallbackStore.keys(prefix));
+      for (const [key, kind] of this._cloudDirty) {
+        if (prefix && !key.startsWith(prefix)) continue;
+        if (kind === "delete") merged.delete(key);
+        else if (localKeys.has(key)) merged.add(key);
+      }
+      return Array.from(merged).sort();
     },
 
     /* ---- public API ------------------------------------------------- */
@@ -215,14 +512,12 @@
 
     async deleteSlot(slot) {
       const k = slotKey(slot);
-      await this.store.remove(k);
-      await this.store.remove(k + ":shadow");
-      await this.store.remove(k + ":bak");
+      await this._remove(k);
     },
 
     /* [{ slot, meta:{ turn, faction, playtime, updatedAt } }], newest first. */
     async listSlots() {
-      const keys = await this.store.keys(P + "slot:");
+      const keys = await this._keys(P + "slot:");
       const out = [];
       for (const k of keys) {
         if (k.endsWith(":shadow") || k.endsWith(":bak")) continue;

@@ -78,7 +78,10 @@
          selected — clearing the selection after it would undo the point. */
       this.focusCapital();
       this.attach();
-      if (ZS.CampaignUI) ZS.CampaignUI.onEnter(this);
+      if (ZS.CampaignUI) {
+        ZS.CampaignUI.onEnter(this);
+        if (payload && payload.turnOutcome) ZS.CampaignUI.resumeTurn(payload.turnOutcome);
+      }
     },
 
     exit() {

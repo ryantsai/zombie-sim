@@ -73,8 +73,12 @@ const RUN_BATTLE = (seed, script, maxSec) => {
       const foe = scen.units.filter((u) => u.side === 1 && u.alive > 0);
       const u = own[s.unit % (own.length || 1)];
       if (u && foe.length) {
-        let fx = 0, fy = 0;
-        for (const e of foe) { fx += e.cx; fy += e.cy; }
+        let fx = 0,
+          fy = 0;
+        for (const e of foe) {
+          fx += e.cx;
+          fy += e.cy;
+        }
         fx /= foe.length;
         fy /= foe.length;
         if (s.form) scen.setFormation(u, s.form);
@@ -84,7 +88,13 @@ const RUN_BATTLE = (seed, script, maxSec) => {
     eng.step(step);
     t += step;
     if (Math.abs(t % 10) < step) {
-      marks.push([Math.round(t), scen.sides[0].alive, scen.sides[1].alive, scen.sides[0].dead, scen.sides[1].dead]);
+      marks.push([
+        Math.round(t),
+        scen.sides[0].alive,
+        scen.sides[1].alive,
+        scen.sides[0].dead,
+        scen.sides[1].dead,
+      ]);
     }
   }
   /* A positional digest of every living man: the strongest statement that two
@@ -183,7 +193,10 @@ async function main() {
     out.clickedRight = C.selection[0] === own[0];
 
     // a box drawn around the player's deployment takes everything of ours
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    let x0 = Infinity,
+      y0 = Infinity,
+      x1 = -Infinity,
+      y1 = -Infinity;
     for (const u of own) {
       for (const m of u.mem) {
         if (m.x < x0) x0 = m.x;
@@ -200,7 +213,10 @@ async function main() {
     out.ownOnly = C.selection.every((u) => u.side === 0);
 
     // ...and the same gesture over the enemy half takes nothing
-    let ex0 = Infinity, ey0 = Infinity, ex1 = -Infinity, ey1 = -Infinity;
+    let ex0 = Infinity,
+      ey0 = Infinity,
+      ex1 = -Infinity,
+      ey1 = -Infinity;
     for (const u of foe) {
       for (const m of u.mem) {
         if (m.x < ex0) ex0 = m.x;
@@ -320,7 +336,12 @@ async function main() {
     { t: 30, unit: 0, form: "square" },
   ];
   const a = await page.evaluate(
-    ({ src, script }) => new Function("seed", "script", "maxSec", "return (" + src + ")(seed, script, maxSec)")(4242, script, 240),
+    ({ src, script }) =>
+      new Function("seed", "script", "maxSec", "return (" + src + ")(seed, script, maxSec)")(
+        4242,
+        script,
+        240,
+      ),
     { src: RUN_BATTLE.toString(), script },
   );
   console.log(
@@ -353,20 +374,37 @@ async function main() {
   /* ---- determinism (§3.6) ------------------------------------------- */
   console.log("\n[determinism]");
   const b = await page.evaluate(
-    ({ src, script }) => new Function("seed", "script", "maxSec", "return (" + src + ")(seed, script, maxSec)")(4242, script, 240),
+    ({ src, script }) =>
+      new Function("seed", "script", "maxSec", "return (" + src + ")(seed, script, maxSec)")(
+        4242,
+        script,
+        240,
+      ),
     { src: RUN_BATTLE.toString(), script },
   );
   eq("same seed + same orders -> same duration", b.t, a.t);
   eq("...same winner", b.result, a.result);
-  eq("...same casualties", JSON.stringify(b.s0) + JSON.stringify(b.s1), JSON.stringify(a.s0) + JSON.stringify(a.s1));
+  eq(
+    "...same casualties",
+    JSON.stringify(b.s0) + JSON.stringify(b.s1),
+    JSON.stringify(a.s0) + JSON.stringify(a.s1),
+  );
   eq("...same men in the same places (position digest)", b.digest, a.digest);
   eq("...same story along the way", JSON.stringify(b.marks), JSON.stringify(a.marks));
 
   const c = await page.evaluate(
-    ({ src, script }) => new Function("seed", "script", "maxSec", "return (" + src + ")(seed, script, maxSec)")(99, script, 240),
+    ({ src, script }) =>
+      new Function("seed", "script", "maxSec", "return (" + src + ")(seed, script, maxSec)")(
+        99,
+        script,
+        240,
+      ),
     { src: RUN_BATTLE.toString(), script },
   );
-  ok("a different seed fights a different battle", c.digest !== a.digest, { a: a.digest, c: c.digest });
+  ok("a different seed fights a different battle", c.digest !== a.digest, {
+    a: a.digest,
+    c: c.digest,
+  });
 
   /* ---- robustness: every one of these is a bug that was shipped once ---- */
   console.log("\n[robustness]");
@@ -402,13 +440,21 @@ async function main() {
     return { rows, ledgerBad };
   });
   const unresolved = sweep.rows.filter((r) => !r.over);
-  ok("every seed reaches a decision (8 battles, passive player)", unresolved.length === 0, unresolved);
+  ok(
+    "every seed reaches a decision (8 battles, passive player)",
+    unresolved.length === 0,
+    unresolved,
+  );
   ok(
     "...in a battle's worth of time",
     sweep.rows.every((r) => r.t >= 20 && r.t <= 200),
     sweep.rows.map((r) => r.t),
   );
-  ok("the side ledger never goes negative or stops summing", sweep.ledgerBad === null, sweep.ledgerBad);
+  ok(
+    "the side ledger never goes negative or stops summing",
+    sweep.ledgerBad === null,
+    sweep.ledgerBad,
+  );
 
   const robust = await page.evaluate(() => {
     const out = {};

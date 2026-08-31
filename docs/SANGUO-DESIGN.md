@@ -745,7 +745,8 @@ phase" discipline as `HOLD-DESIGN.md` §10.
 
 ### Still open
 
-*(none blocking — the next move is P0)*
+*(none blocking for v1 — P0–P7 are implemented and verified; diplomacy-lite
+and fog of war remain optional post-v1 directions.)*
 
 ---
 

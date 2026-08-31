@@ -14,18 +14,21 @@
    faction), so replaying a campaign from a save gives the same AI turn. No
    bare Math.random() (§3 constraint 6).
 
-   Personality is `temper` from js/campaign/data/factions.js and it is one
-   number: how much of an advantage this warlord wants before committing.
-   曹操 moves on a hair; 劉表 wants to be sure. */
+   Personality begins with `temper` from data/factions.js and is refined by
+   ZS.CampaignDoctrine when that content module is loaded. Doctrines are
+   decision weights, never bonuses: every faction sees the same public board
+   and issues the same legal orders, but values reserves, mass, development,
+   and visible terrain differently. */
 (() => {
   "use strict";
   const ZS = (window.ZS = window.ZS || {});
 
   /* Strength ratio the AI wants before it attacks. */
   const NERVE = { bold: 1.1, steady: 1.35, wary: 1.8 };
-  /* Fraction of the treasury a faction is willing to hold rather than spend. */
+  /* Gold an AI without a loaded doctrine is willing to hold rather than spend. */
   const RESERVE = 150;
   const MIN_FIELD_ARMY = 800;
+  const PROVINCES_PER_ARMY = 3;
   /* What a stack is trying to grow to before it is worth marching anywhere.
      A walled size-3 city holds ~2,400 men, which a `steady` warlord will not
      touch under ~2,900 of strength — so a warlord who splits every levy into a
@@ -36,6 +39,36 @@
      season). Marching a spent column into a fight is how a faction loses its
      field army for nothing. */
   const RESTING = 0.5;
+  /* Public-board consolidation weights. Without a reason to close a pocket or
+     finish a failing rival, every border commandery is roughly equivalent and
+     realms trade the same fringe ground forever. */
+  const FINISH_PRESSURE = 5000;
+  const SUPPORT_BONUS = 100;
+  const CAPITAL_BONUS = 1500;
+
+  function doctrineFor(factionId) {
+    const D = ZS.CampaignDoctrine;
+    return D && typeof D.forFaction === "function" ? D.forFaction(factionId) : null;
+  }
+
+  function knob(doctrine, name, fallback) {
+    const value = doctrine && doctrine[name];
+    return typeof value === "number" && isFinite(value) ? value : fallback;
+  }
+
+  function developmentOrder(doctrine, short, atFrontier) {
+    const preferred = doctrine && doctrine.development;
+    if (!Array.isArray(preferred)) {
+      return short
+        ? ["food", "income", "wall", "recruit"]
+        : atFrontier
+          ? ["wall", "recruit", "income", "food"]
+          : ["income", "food", "recruit", "wall"];
+    }
+    if (!short || preferred[0] === "food") return preferred;
+    /* A doctrine is a preference, not permission to ignore starvation. */
+    return ["food"].concat(preferred.filter((track) => track !== "food"));
+  }
 
   function seedFor(camp, factionId) {
     let h = (camp.seed | 0) ^ Math.imul(camp.turn, 0x9e3779b1);
@@ -75,6 +108,47 @@
     return out;
   }
 
+  function targetScore(pd, pr, defence, routeCost, doctrine, jitter, strategic) {
+    if (!pd) return -Infinity;
+    const target = doctrine && doctrine.target;
+    if (!target) {
+      return pd.size * 100 - defence * 0.05 - routeCost * 30 + (jitter || 0) + (strategic || 0);
+    }
+    const biome = (target.biome && target.biome[pd.biome]) || 0;
+    const wall = pr && pr.dev ? pr.dev.wall | 0 : pd.wall | 0;
+    return (
+      pd.size * knob(target, "size", 100) -
+      defence * knob(target, "defence", 0.05) -
+      routeCost * knob(target, "route", 30) +
+      wall * knob(target, "wall", 0) +
+      (pd.port ? knob(target, "port", 0) : 0) +
+      biome +
+      (jitter || 0) +
+      (strategic || 0)
+    );
+  }
+
+  function strategicScore(camp, factionId, ownerId, provinceId) {
+    if (!ownerId || ownerId === factionId) return 0;
+    const enemyLands = Math.max(1, camp.provincesOf(ownerId).length);
+    let score = FINISH_PRESSURE / enemyLands;
+    /* A founding seat remains strategically decisive even after a third
+       house has occupied it. Scoring only the current owner's own capital
+       made the late game wander around obsolete fringe targets while the
+       mandate's remaining rival seats were ignored. */
+    const rivalSeats =
+      ZS.CampaignVictory && ZS.CampaignVictory.rivalCapitalIds
+        ? ZS.CampaignVictory.rivalCapitalIds(camp, factionId)
+        : [];
+    if (rivalSeats.indexOf(provinceId) >= 0) score += CAPITAL_BONUS;
+    let support = 0;
+    for (const neighbour of ZS.CampaignMap.neighbours(provinceId)) {
+      if (camp.owner(neighbour.id) === factionId) support++;
+    }
+    if (support > 1) score += (support - 1) * SUPPORT_BONUS;
+    return score;
+  }
+
   const CampaignAI = {
     NERVE,
 
@@ -83,35 +157,34 @@
       const fd = camp.factionDef(factionId);
       if (!f || !f.alive) return;
       const rng = ZS.rng32(seedFor(camp, factionId));
-      const nerve = NERVE[(fd && fd.temper) || "steady"] || NERVE.steady;
+      const doctrine = doctrineFor(factionId);
+      const nerve = knob(doctrine, "nerve", NERVE[(fd && fd.temper) || "steady"] || NERVE.steady);
 
-      this.economy(camp, factionId, f, rng);
-      this.forces(camp, factionId, f, rng);
-      this.movement(camp, factionId, nerve, rng);
+      this.economy(camp, factionId, f, rng, doctrine);
+      this.forces(camp, factionId, f, rng, doctrine);
+      this.movement(camp, factionId, nerve, rng, doctrine);
     },
 
     /* Spend on the ground you are going to have to hold. Development first —
        it compounds — then men, and only from what is left. */
-    economy(camp, factionId, f, rng) {
+    economy(camp, factionId, f, rng, doctrine) {
+      doctrine = doctrine || doctrineFor(factionId);
+      const reserve = knob(doctrine, "reserveGold", RESERVE);
       const front = frontier(camp, factionId);
       const owned = camp.provincesOf(factionId);
       if (!owned.length) return;
 
       /* One development a season, at most. Prefer food when short, income
          otherwise, and walls on the frontier. */
-      if (f.gold > RESERVE + 120) {
+      if (f.gold > reserve + 120) {
         const short = f.food < 600;
         const pool = front.length ? front : owned;
         const pid = pool[Math.floor(rng() * pool.length) % pool.length];
         const pr = camp.prov(pid);
-        const order = short
-          ? ["food", "income", "wall", "recruit"]
-          : front.indexOf(pid) >= 0
-            ? ["wall", "recruit", "income", "food"]
-            : ["income", "food", "recruit", "wall"];
+        const order = developmentOrder(doctrine, short, front.indexOf(pid) >= 0);
         for (const track of order) {
           const cost = camp.devCost(pid, track);
-          if (isFinite(cost) && f.gold - cost >= RESERVE) {
+          if (isFinite(cost) && f.gold - cost >= reserve) {
             f.gold -= cost;
             pr.dev[track] += 1;
             pr.loyalty = ZS.clamp(pr.loyalty + 3, 0, 100);
@@ -121,7 +194,7 @@
       }
 
       /* Recruit into whichever frontier province is thinnest. */
-      if (f.gold > RESERVE + 200 && f.food > 400) {
+      if (f.gold > reserve + 200 && f.food > 400) {
         const pool = front.length ? front : owned;
         let target = null,
           thin = Infinity;
@@ -137,7 +210,7 @@
           let want = Math.min(cap, 700);
           while (want > 0) {
             const price = ZS.Army.cost(ZS.Turn.splitByComp(want, ZS.Army.defaultComp()));
-            if (f.gold - price.gold >= RESERVE && f.food - price.food >= 200) {
+            if (f.gold - price.gold >= reserve && f.food - price.food >= 200) {
               f.gold -= price.gold;
               f.food -= price.food;
               camp.prov(target).garrison += want;
@@ -152,7 +225,9 @@
     /* Turn surplus garrison into field armies — and, first, into *bigger*
        field armies. A warlord with everything behind walls never takes
        anything, but one with five under-strength columns takes nothing either. */
-    forces(camp, factionId, f, rng) {
+    forces(camp, factionId, f, rng, doctrine) {
+      doctrine = doctrine || doctrineFor(factionId);
+      const massTarget = knob(doctrine, "massTarget", MASS_TARGET);
       const armies = camp.armiesOf(factionId);
       const owned = camp.provincesOf(factionId);
       if (!owned.length) return;
@@ -162,7 +237,7 @@
          it is what lets a faction mass rather than sprinkle. */
       const front = frontier(camp, factionId);
       for (const a of armies) {
-        if (ZS.Army.isMarching(a) || a.troops >= MASS_TARGET) continue;
+        if (ZS.Army.isMarching(a) || a.troops >= massTarget) continue;
         const pr = camp.prov(a.at);
         if (!pr || pr.owner !== factionId) continue;
         /* Only genuine surplus goes to the field. A province has to keep the
@@ -178,12 +253,16 @@
         const floor = Math.max(ZS.Campaign.GARRISON_MIN, keep);
         const spare = pr.garrison - floor;
         if (spare < 300) continue;
-        const take = Math.min(spare, MASS_TARGET - a.troops);
+        const take = Math.min(spare, massTarget - a.troops);
         pr.garrison -= take;
         ZS.Army.reinforce(a, ZS.Turn.splitByComp(take, a.comp));
       }
 
-      if (armies.length >= Math.max(1, owned.length)) return;
+      /* Expansion should fund stronger hosts, not one under-strength token in
+         every commandery. Existing armies are never deleted; this only limits
+         how quickly surplus garrisons are split into new columns. */
+      const armyLimit = Math.max(1, Math.ceil(owned.length / PROVINCES_PER_ARMY));
+      if (armies.length >= armyLimit) return;
 
       let best = null,
         most = 0;
@@ -209,7 +288,15 @@
     /* Where the stacks go. One decision per idle army: take the cheapest
        neighbouring prize it can afford, otherwise reinforce the weakest
        frontier it owns, otherwise sit. */
-    movement(camp, factionId, nerve, rng) {
+    movement(camp, factionId, nerve, rng, doctrine) {
+      doctrine = doctrine || doctrineFor(factionId);
+      /* A realm that has survived into the multi-front late game can accept
+         closer odds than a one-city house. This is not a combat bonus: it
+         only stops a dominant AI from guarding every border forever while
+         the campaign waits decades for one risk-free attack. */
+      const realmSize = camp.provincesOf(factionId).length;
+      const momentum = ZS.clamp((realmSize - 6) / 48, 0, 0.48);
+      const attackNerve = nerve * (1 - momentum);
       for (const a of camp.armiesOf(factionId)) {
         if (ZS.Army.isMarching(a) || a.troops <= 0) continue;
         /* Spent columns rest. Fatigue sheds a quarter per quiet season, so
@@ -224,12 +311,20 @@
           const owner = camp.owner(n.id);
           if (owner === factionId) continue;
           const def = defenceOf(camp, n.id);
-          if (strength < def * nerve) continue;
+          if (strength < def * attackNerve) continue;
           const pd = ZS.CampaignMap.province(n.id);
           /* Worth = what the province is, discounted by what it costs to get
              there and how hard it will be. A tiny nudge from the RNG breaks
              ties without making the AI flighty. */
-          const score = pd.size * 100 - def * 0.05 - n.cost * 30 + rng() * 20;
+          const score = targetScore(
+            pd,
+            camp.prov(n.id),
+            def,
+            n.cost,
+            doctrine,
+            rng() * 20,
+            strategicScore(camp, factionId, owner, n.id),
+          );
           if (score > prizeScore) {
             prizeScore = score;
             prize = n.id;
@@ -270,7 +365,12 @@
   };
 
   CampaignAI.MASS_TARGET = MASS_TARGET;
+  CampaignAI.RESERVE = RESERVE;
+  CampaignAI.PROVINCES_PER_ARMY = PROVINCES_PER_ARMY;
   CampaignAI.defenceOf = defenceOf;
   CampaignAI.frontier = frontier;
+  CampaignAI.doctrineFor = doctrineFor;
+  CampaignAI.targetScore = targetScore;
+  CampaignAI.strategicScore = strategicScore;
   ZS.CampaignAI = CampaignAI;
 })();

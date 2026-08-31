@@ -65,7 +65,22 @@ const MIME = {
 
   // eight seasons on, with the AI having moved
   await p.evaluate(() => {
-    for (let i = 0; i < 8; i++) ZS.CampaignUI.endTurn();
+    const camp = ZS.App.campaign;
+    for (let i = 0; i < 8 && !camp.over; i++) {
+      ZS.CampaignAI.plan(camp, camp.playerFactionId);
+      ZS.Turn.end(camp);
+      const pending = ZS.CampaignEvents.pending(camp);
+      if (pending) {
+        for (let k = 0; k < pending.event.choices.length; k++) {
+          if (ZS.CampaignEvents.canChoose(camp, k)) {
+            ZS.CampaignEvents.choose(camp, k);
+            break;
+          }
+        }
+      }
+    }
+    ZS.CampaignUI.encounter.classList.remove("on");
+    ZS.CampaignUI.refresh();
     const V = ZS.CampaignView;
     V.cam.fit(V.W, V.H);
     V.cam.clamp(V.W, V.H);

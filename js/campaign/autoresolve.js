@@ -25,7 +25,16 @@
   /* Storming a place costs the attacker more than beating the same men in the
      open would. §4.3 gives the defender of a `fort` a morale bonus for the same
      reason; this is the closed-form shadow of it. */
-  const ASSAULT_TAX = 0.12;
+  const ASSAULT_TAX = 0.08;
+  /* A routed side has to leave the field decisively. At the old 30% floor, a
+     perfectly even fight cost the winner 28% and the loser 30%; both stacks
+     returned next season at effectively the same ratio and fought forever.
+     The winner curve is unchanged, while a defeated side now loses 48-88%
+     from close fight to rout. */
+  const LOSER_BASE = 0.48;
+  const LOSER_EDGE = 0.4;
+  const WINNER_BASE = 0.04;
+  const WINNER_CLOSE = 0.14;
 
   function seedFor(camp, provinceId) {
     let h = (camp.seed | 0) ^ (camp.turn * 0x9e3779b1);
@@ -75,8 +84,8 @@
     return {
       attackerWins,
       closeness,
-      loserFrac: 0.3 + 0.35 * (1 - closeness),
-      winnerFrac: 0.06 + 0.22 * closeness,
+      loserFrac: LOSER_BASE + LOSER_EDGE * (1 - closeness),
+      winnerFrac: WINNER_BASE + WINNER_CLOSE * closeness,
     };
   }
 
@@ -91,68 +100,106 @@
     return out;
   }
 
+  /* Previewing a battle must not touch the campaign. Keep the resolver itself
+     single-sourced and run it against these small detached records instead of
+     maintaining a second, almost-the-same casualty formula. */
+  function copyArmy(a) {
+    return Object.assign({}, a, {
+      comp: Object.assign({}, a.comp),
+      generals: a.generals.slice(),
+    });
+  }
+
+  function copyArmies(armies) {
+    return armies.map(copyArmy);
+  }
+
+  function resolveField(camp, attackers, defenders, provinceId) {
+    const rng = ZS.rng32(seedFor(camp, provinceId));
+    const attStr = stackStrength(attackers);
+    const defStr = stackStrength(defenders);
+    const o = outcome(attStr, defStr, rng);
+    const losses = {};
+
+    const winners = o.attackerWins ? attackers : defenders;
+    const losers = o.attackerWins ? defenders : attackers;
+    bleed(losers, Math.round(troopTotal(losers) * o.loserFrac), losses);
+    bleed(winners, Math.round(troopTotal(winners) * o.winnerFrac), losses);
+
+    return {
+      winner: winners.length ? winners[0].faction : "draw",
+      losses,
+      generals: generalReport(attackers.concat(defenders)),
+      territory: o.attackerWins ? "attacker_takes" : "attacker_retreats",
+      duelLog: [],
+      kind: "field",
+      province: provinceId,
+    };
+  }
+
+  function resolveAssault(camp, attackers, provinceId, pr) {
+    const rng = ZS.rng32(seedFor(camp, provinceId) ^ 0x5bf03635);
+    const wall = WALL_BONUS[ZS.clamp(pr.dev.wall | 0, 0, WALL_BONUS.length - 1)];
+    const attStr = stackStrength(attackers);
+    const defStr = Math.round(pr.garrison * GARRISON_QUALITY * wall);
+    const o = outcome(attStr, defStr, rng);
+    const losses = {};
+
+    if (o.attackerWins) {
+      bleed(attackers, Math.round(troopTotal(attackers) * (o.winnerFrac + ASSAULT_TAX)), losses);
+      const dead = Math.round(pr.garrison * o.loserFrac);
+      pr.garrison = Math.max(0, pr.garrison - dead);
+      if (pr.owner) losses[pr.owner] = (losses[pr.owner] || 0) + dead;
+    } else {
+      bleed(attackers, Math.round(troopTotal(attackers) * o.loserFrac), losses);
+      const dead = Math.round(pr.garrison * o.winnerFrac);
+      pr.garrison = Math.max(0, pr.garrison - dead);
+      if (pr.owner) losses[pr.owner] = (losses[pr.owner] || 0) + dead;
+    }
+
+    return {
+      winner: o.attackerWins ? attackers[0].faction : pr.owner,
+      losses,
+      generals: generalReport(attackers),
+      territory: o.attackerWins ? "attacker_takes" : "defender_holds",
+      duelLog: [],
+      kind: "assault",
+      province: provinceId,
+    };
+  }
+
   const AutoResolve = {
     WALL_BONUS,
     GARRISON_QUALITY,
     ASSAULT_TAX,
+    LOSER_BASE,
+    LOSER_EDGE,
+    WINNER_BASE,
+    WINNER_CLOSE,
 
     /* Two field armies meet. `territory` says what the campaign should do with
        the province afterwards; the caller applies it. */
     field(camp, attackers, defenders, provinceId) {
-      const rng = ZS.rng32(seedFor(camp, provinceId));
-      const attStr = stackStrength(attackers);
-      const defStr = stackStrength(defenders);
-      const o = outcome(attStr, defStr, rng);
-      const losses = {};
+      return resolveField(camp, attackers, defenders, provinceId);
+    },
 
-      const winners = o.attackerWins ? attackers : defenders;
-      const losers = o.attackerWins ? defenders : attackers;
-      bleed(losers, Math.round(troopTotal(losers) * o.loserFrac), losses);
-      bleed(winners, Math.round(troopTotal(winners) * o.winnerFrac), losses);
-
-      return {
-        winner: winners.length ? winners[0].faction : "draw",
-        losses,
-        generals: generalReport(attackers.concat(defenders)),
-        territory: o.attackerWins ? "attacker_takes" : "attacker_retreats",
-        duelLog: [],
-        kind: "field",
-        province: provinceId,
-      };
+    /* Same deterministic result, calculated against detached snapshots. The
+       caller may inspect it, hand it to ZS.Handoff.apply(), or discard it. */
+    previewField(camp, attackers, defenders, provinceId) {
+      return resolveField(camp, copyArmies(attackers), copyArmies(defenders), provinceId);
     },
 
     /* A field army walks into a hostile province with no army in it. The wall
        and the garrison are the defence; taking the province is the point. */
     assault(camp, attackers, provinceId) {
       const pr = camp.prov(provinceId);
-      const rng = ZS.rng32(seedFor(camp, provinceId) ^ 0x5bf03635);
-      const wall = WALL_BONUS[ZS.clamp(pr.dev.wall | 0, 0, WALL_BONUS.length - 1)];
-      const attStr = stackStrength(attackers);
-      const defStr = Math.round(pr.garrison * GARRISON_QUALITY * wall);
-      const o = outcome(attStr, defStr, rng);
-      const losses = {};
+      return resolveAssault(camp, attackers, provinceId, pr);
+    },
 
-      if (o.attackerWins) {
-        bleed(attackers, Math.round(troopTotal(attackers) * (o.winnerFrac + ASSAULT_TAX)), losses);
-        const dead = Math.round(pr.garrison * o.loserFrac);
-        pr.garrison = Math.max(0, pr.garrison - dead);
-        if (pr.owner) losses[pr.owner] = (losses[pr.owner] || 0) + dead;
-      } else {
-        bleed(attackers, Math.round(troopTotal(attackers) * o.loserFrac), losses);
-        const dead = Math.round(pr.garrison * o.winnerFrac);
-        pr.garrison = Math.max(0, pr.garrison - dead);
-        if (pr.owner) losses[pr.owner] = (losses[pr.owner] || 0) + dead;
-      }
-
-      return {
-        winner: o.attackerWins ? attackers[0].faction : pr.owner,
-        losses,
-        generals: generalReport(attackers),
-        territory: o.attackerWins ? "attacker_takes" : "defender_holds",
-        duelLog: [],
-        kind: "assault",
-        province: provinceId,
-      };
+    previewAssault(camp, attackers, provinceId) {
+      const src = camp.prov(provinceId);
+      const pr = Object.assign({}, src, { dev: Object.assign({}, src.dev) });
+      return resolveAssault(camp, copyArmies(attackers), provinceId, pr);
     },
   };
 

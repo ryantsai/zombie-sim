@@ -40,6 +40,7 @@
     running: false,
     storageWarning: false,
     campaign: null, // the live ZS.Campaign, or null outside a campaign
+    turnOutcome: null, // transient result while a played battle hands the season back
 
     /* Persisted player settings. The locale lives here *and* in a standalone
        store key, so the very first menu can render before any save loads. */
@@ -170,6 +171,40 @@
     registerView(name, view) {
       this.views.set(name, view);
       return this;
+    },
+
+    /* A campaign battle is transient: the campaign owns the men and the
+       season, while ScenarioSanguo only owns the played-out field. Translate
+       its ledger before tearing the engine down, resume the suspended turn,
+       then hand the resulting pending/complete report back to CampaignUI.
+
+       A plain skirmish has no context and simply returns to the menu. */
+    finishBattle() {
+      const live = this.battle;
+      if (!live || !live.scen || !live.scen.over) return false;
+      if (!live.context || !this.campaign || !ZS.Handoff || !ZS.Turn) {
+        return this.go(STATE.MENU);
+      }
+      const result = ZS.Handoff.resultFromScenario(live.scen, live.context);
+      this.turnOutcome = ZS.Turn.resolvePending(this.campaign, result);
+      return this.go(STATE.CAMPAIGN, {
+        campaign: this.campaign,
+        turnOutcome: this.turnOutcome,
+      });
+    },
+
+    /* Leaving a campaign field is a retreat, not a way to discard the
+       suspended season. Skirmishes retain the old leave-to-menu behaviour. */
+    cancelBattle() {
+      const live = this.battle;
+      if (!live || !live.context || !this.campaign || !ZS.Turn) {
+        return this.go(STATE.MENU);
+      }
+      this.turnOutcome = ZS.Turn.retreatPending(this.campaign);
+      return this.go(STATE.CAMPAIGN, {
+        campaign: this.campaign,
+        turnOutcome: this.turnOutcome,
+      });
     },
 
     go(state, payload) {
@@ -390,6 +425,7 @@
     ownsLoop: true,
     engine: null,
     scen: null,
+    context: null,
     music: "battle",
 
     enter(payload) {
@@ -397,12 +433,13 @@
         (payload && payload.setup) ||
         ZS.ScenarioSanguo.defaultSetup((Math.random() * 0x7fffffff) | 0);
       this.scen = new ZS.ScenarioSanguo(setup);
+      this.context = (payload && payload.context) || null;
       this.engine = ZS.Engine.start({
         scenario: this.scen,
         seed: setup.seed,
         fixedStep: 1 / 30,
       });
-      App.battle = { engine: this.engine, scen: this.scen, setup };
+      App.battle = { engine: this.engine, scen: this.scen, setup, context: this.context };
       return this.engine;
     },
 
@@ -412,6 +449,7 @@
       if (ZS.fx) ZS.fx.length = 0;
       this.engine = null;
       this.scen = null;
+      this.context = null;
       App.battle = null;
     },
   };

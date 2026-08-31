@@ -86,6 +86,8 @@
   const STALEMATE = 45; // seconds without a casualty before the field is called
   const STALEMATE_EDGE = 0.1; // strength gap below which a called field is a draw
   const FIELD_CAP = 2000; // provisional cap, validated by the P2 LOD probe
+  const FIRE_PATCH_CAP = 10;
+  const FIRE_TICK = 0.65;
 
   /* Presentation-only battle barks. Picks use ZS.hash instead of the combat
      RNG, so chatter cannot alter a deterministic replay. */
@@ -155,6 +157,9 @@
         };
     return {
       seed: seed | 0 || 20250830,
+      /* The original P1 skirmish remains the deterministic regression field.
+         Campaign BattleSetups omit this flag and therefore enable P5 duels. */
+      duels: false,
       field: { kind: "open", terrain: "plain", biome: "central" },
       sides: [
         {
@@ -184,6 +189,13 @@
       this.units = [];
       this.generals = [];
       this.sides = [];
+      this.sideFactionIds = [0, 1];
+      this.sideFlags = [null, null];
+      this.reserves = [null, null];
+      this.map = null;
+      this.attackerSide = 0;
+      this.defenderSide = 1;
+      this.gateBreached = false;
       this.sepR = 13; // packed ranks sit at slot spacing (inherited from Cannae)
       this.hudFont = ZS.CJK_STACK; // the HUD is Chinese; draw.js asks for this
       this.t0 = null;
@@ -199,8 +211,10 @@
       this.rng = null;
       this.nextUid = 1;
       this.orderLog = []; // (t, unit, order) — the replay record (§3.6)
+      this.duelLog = [];
       this.morale = null;
       this.abilities = null;
+      this.duels = null;
       this.feel = null;
       this.commander = null;
       this.simHold = false;
@@ -243,6 +257,28 @@
       this._splashProjectile = null;
       this._probeProjectileBound = (a) => this._probeProjectileAgent(a);
       this._splashProjectileBound = (a) => this._splashProjectileAgent(a);
+      this.firePatches = [];
+      for (let i = 0; i < FIRE_PATCH_CAP; i++) {
+        this.firePatches.push({
+          active: false,
+          x: 0,
+          y: 0,
+          r: 0,
+          r2: 0,
+          t: 0,
+          life: 0,
+          tick: 0,
+          potency: 0,
+          side: 0,
+          seed: 0,
+          owner: null,
+        });
+      }
+      this.fireSeq = 0;
+      this.ambushSeq = 0;
+      this._firePatch = null;
+      this._burnFireBound = (a) => this._burnFireAgent(a);
+      this._agents = null;
     }
 
     /* ---------- deterministic randomness (§3.6) ---------- */
@@ -355,22 +391,15 @@
       });
     }
 
-    /* `open`: a clean plain, and deliberately nothing else yet.
-
-       Water and a town were both tried here first and both were wrong for a
-       skirmish. `world.water()` only runs its pinned, scenario-placed path
-       when *both* `riverBaseX` and `lake` are given; with one of them missing
-       it falls through to the generative branch, which laid a river diagonally
-       across the middle of the battlefield. Two armies then deploy on opposite
-       banks, and remnants that drift into the water get pinned there by the
-       core's walkability clamp with no way back — a battle that can never end.
-
-       So `open` is open. The river, hills and forest that §4.3 wants under
-       this field kind come back at P4 alongside `town` (ZS.Buildings, the
-       Outbreak) and `fort` (ZS.Tiles + blocks, the Hold), by which point the
-       flow field routes around them and the deployment respects them.
-       `_findField` already searches for dry ground, so it is ready for that. */
-    terrain(world, _nav) {
+    /* Battlefield owns deterministic open-country, town and fort generation.
+       The small fallback keeps sanguo.js independently bootable in old probes
+       that intentionally omit the P4 module. */
+    terrain(world, nav) {
+      const setup = this.setup || (this.setup = defaultSetup(world.seed));
+      if (ZS.Battlefield) {
+        this.map = ZS.Battlefield.create(setup.field, world, nav, setup.seed);
+        return;
+      }
       world.towns = [];
       world.layoutForest({ none: true });
       world.placeAllTrees({
@@ -419,6 +448,7 @@
         // sanguo fields
         side: extra.side,
         faction: extra.faction,
+        factionId: extra.factionId,
         type: extra.type,
         tier: extra.tier || 0,
         un: extra.un,
@@ -441,6 +471,8 @@
         fatigue: 0,
         fdirC: -999,
         fdir: 0,
+        fleeExitX: 0,
+        fleeExitY: 0,
         name: extra.name || null,
         auraR: extra.auraR || 0,
         general: !!extra.general,
@@ -460,8 +492,8 @@
       return false; // open field: nobody needs the A* budget
     }
 
-    walkBlocked(_a) {
-      return true;
+    walkBlocked(a) {
+      return this.map ? this.map.collisionMask(a.side, a.type) : true;
     }
 
     maxSpeed(a) {
@@ -472,7 +504,8 @@
       const nerve = u && u.morState === ZS.BattleMorale.WAVERING ? 0.82 : 1;
       const general = u && u.general;
       const swift = general && hasSkill(general, "swift") ? 1.1 : 1;
-      return base * nerve * swift * (1 - 0.33 * Math.min(1, a.fatigue));
+      const ground = this.map ? this.map.speedMul(a) : 1;
+      return base * nerve * swift * ground * (1 - 0.33 * Math.min(1, a.fatigue));
     }
 
     /* ---------- orders (the whole point of the pack) ---------- */
@@ -511,8 +544,204 @@
       return true;
     }
 
-    useAbility(id, general) {
-      return this.abilities ? this.abilities.use(id, general) : false;
+    useAbility(id, general, target) {
+      return this.abilities ? this.abilities.use(id, general, target) : false;
+    }
+
+    abilityLOS(general, x, y, _id) {
+      if (!this._nav) return false;
+      const mask = this.map ? this.map.collisionMask(general.side, general.type) : true;
+      return this._nav.los(general.x, general.y, x, y, mask, true);
+    }
+
+    /* Fire is a bounded persistent ground hazard rather than a shower of
+       transient FX records. Casts are cold-path; the frame pass below reuses a
+       fixed pool and one bound grid callback. Walls stop both the cast ray and
+       damage from reaching a figure on the other side. */
+    abilityFire(general, x, y, potency, definition) {
+      if (!this._nav) return false;
+      const mask = this.map ? this.map.collisionMask(general.side, general.type) : true;
+      if ((this._nav.isWater && this._nav.isWater(x, y)) || !this._nav.isWalkable(x, y, mask)) {
+        return false;
+      }
+      let patch = null;
+      for (let i = 0; i < this.firePatches.length; i++) {
+        const candidate = this.firePatches[i];
+        if (!candidate.active) {
+          patch = candidate;
+          break;
+        }
+        if (!patch || candidate.t < patch.t) patch = candidate;
+      }
+      if (!patch) return false;
+      const radius =
+        (Number(definition.radius) || 70) + (Number(definition.potencyRadius) || 0) * potency;
+      const life =
+        (Number(definition.duration) || 5) + (Number(definition.potencyDuration) || 0) * potency;
+      patch.active = true;
+      patch.x = x;
+      patch.y = y;
+      patch.r = radius;
+      patch.r2 = radius * radius;
+      patch.t = life;
+      patch.life = life;
+      patch.tick = FIRE_TICK * 0.5;
+      patch.potency = potency;
+      patch.side = general.side;
+      patch.owner = general;
+      patch.seed =
+        ((this.setup && this.setup.seed) | 0) ^
+        Math.imul(++this.fireSeq, 7919) ^
+        ((general.seed * 31) | 0);
+      if (ZS.sound) ZS.sound.event("fire", x, y);
+      return true;
+    }
+
+    abilityAmbush(general, x, y, potency, definition) {
+      const reserve = this.reserves[general.side];
+      if (!this._agents || !reserve || reserve.left <= 0 || !reserve.comp) return false;
+      const count = Math.min(
+        reserve.left,
+        Math.max(
+          1,
+          Math.round(
+            (Number(definition.count) || 24) + (Number(definition.potencyCount) || 0) * potency,
+          ),
+        ),
+      );
+      if (count <= 0) return false;
+
+      const inset = 92;
+      const left = x;
+      const right = this.w - x;
+      const top = y;
+      const bottom = this.h - y;
+      let sx = x,
+        sy = y,
+        head = 0,
+        edge = left;
+      if (right < edge) {
+        edge = right;
+        head = Math.PI;
+      }
+      if (top < edge) {
+        edge = top;
+        head = Math.PI * 0.5;
+      }
+      if (bottom < edge) {
+        head = -Math.PI * 0.5;
+      }
+      if (head === 0) sx = inset;
+      else if (head === Math.PI) sx = this.w - inset;
+      else if (head > 0) sy = inset;
+      else sy = this.h - inset;
+      if (this.map) {
+        const spawn = this.map.normalizeGoal(general.side, sx, sy);
+        sx = spawn.x;
+        sy = spawn.y;
+      }
+
+      reserve.left -= count;
+      reserve.t = Math.max(reserve.t, 5.5);
+      const built = this._deploySide(
+        this._agents,
+        general.side,
+        {
+          factionId: this.sideFactionIds[general.side],
+          colorSlot: this.setup.sides[general.side].colorSlot,
+          comp: reserve.comp,
+          onField: count,
+          reserve: 0,
+          generals: [],
+        },
+        sx,
+        sy,
+        head,
+        Math.min(210, 90 + count * 2),
+      );
+      this.sides[general.side].total0 += count;
+      this._primeReinforcementMorale(built, general.side);
+
+      let gx = this.w * 0.5,
+        gy = this.h * 0.5,
+        best = Infinity;
+      if (
+        this.map &&
+        this.map.kind === "fort" &&
+        general.side === this.attackerSide &&
+        this.map.gate &&
+        !this.map.gate.broken
+      ) {
+        gx = this.map.objective.approach.x;
+        gy = this.map.objective.approach.y;
+      } else {
+        for (let i = 0; i < this.units.length; i++) {
+          const unit = this.units[i];
+          if (unit.side === general.side || (!unit.alive && !unit.routAlive)) continue;
+          const dx = unit.cx - sx;
+          const dy = unit.cy - sy;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < best) {
+            best = d2;
+            gx = unit.cx;
+            gy = unit.cy;
+          }
+        }
+      }
+      for (let i = 0; i < built.length; i++) {
+        const unit = built[i];
+        const order = { kind: "attack", x: gx, y: gy, form: null };
+        unit.orders.push(order);
+        this._beginOrder(unit, order);
+        if (!unit.reach) {
+          unit.orders.length = 0;
+          unit.st = HOLD;
+          unit.tx = unit.cx;
+          unit.ty = unit.cy;
+        }
+      }
+      this.fx.push({
+        x: sx,
+        y: sy,
+        t: 0.3,
+        poof: true,
+        seed: ((this.setup && this.setup.seed) | 0) + ++this.ambushSeq * 131 + count * 17,
+      });
+      if (ZS.sound) ZS.sound.event("v_shout", sx, sy);
+      return true;
+    }
+
+    duelLOS(a, b) {
+      return this._hasLOS(a, b);
+    }
+
+    duelRound(a, b, winner, _scoreA, _scoreB, round) {
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const d = Math.hypot(dx, dy) || 1;
+      this.fx.push({
+        x: (a.x + b.x) * 0.5,
+        y: (a.y + b.y) * 0.5,
+        dx: dx / d,
+        dy: dy / d,
+        t: 0.32,
+        duel: true,
+        seed: (((this.setup && this.setup.seed) || 1) + round * 97 + winner.seed * 13) | 0,
+      });
+    }
+
+    duelKill(loser, winner, _summary) {
+      if (loser.dead) return;
+      loser.outcome = "killed";
+      this._kill(loser, winner);
+    }
+
+    duelRout(loser, _winner, _summary) {
+      this._setRout(loser);
+    }
+
+    camInterest(_dt) {
+      return this.duels ? this.duels.cameraInterest() : null;
     }
 
     frameFeedback(dt, t) {
@@ -557,7 +786,26 @@
        unreachable rather than marched at forever — that is the whole reason
        the movement runs on a field instead of a straight line. */
     _setGoal(u, x, y) {
-      if (!u.ff) u.ff = new ZS.FlowField(this._nav);
+      if (x < 0 || y < 0 || x >= this.w || y >= this.h) {
+        u.reach = false;
+        return false;
+      }
+      if (this.map) {
+        const goal = this.map.normalizeGoal(u.side, x, y);
+        x = goal.x;
+        y = goal.y;
+      }
+      if (!u.ff) {
+        u.ff = new ZS.FlowField(
+          this._nav,
+          this.map
+            ? {
+                collisionMask: this.map.collisionMask(u.side, u.type),
+                moveCost: this.map.moveCost,
+              }
+            : null,
+        );
+      }
       if (!u.ff.isFor(x, y) && !u.ff.build(x, y)) {
         u.reach = false;
         return false;
@@ -589,6 +837,51 @@
       }
     }
 
+    _updateFirePatches(dt, grid) {
+      for (let i = 0; i < this.firePatches.length; i++) {
+        const patch = this.firePatches[i];
+        if (!patch.active) continue;
+        patch.t -= dt;
+        if (patch.t <= 0) {
+          patch.active = false;
+          patch.owner = null;
+          continue;
+        }
+        patch.tick -= dt;
+        while (patch.active && patch.tick <= 0) {
+          patch.tick += FIRE_TICK;
+          this._firePatch = patch;
+          grid.query(patch.x, patch.y, patch.r, this._burnFireBound);
+          this._firePatch = null;
+        }
+      }
+    }
+
+    _burnFireAgent(a) {
+      const patch = this._firePatch;
+      if (!patch || a.dead || a.gone) return;
+      const dx = a.x - patch.x;
+      const dy = a.y - patch.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > patch.r2) return;
+      if (
+        this.map &&
+        !this._nav.los(patch.x, patch.y, a.x, a.y, this.map.collisionMask(a.side, a.type), true)
+      ) {
+        return;
+      }
+      const falloff = 1 - Math.sqrt(d2) / patch.r;
+      let damage = (0.16 + patch.potency * 0.12) * (0.72 + falloff * 0.28);
+      if (a.side === patch.side) damage *= 0.4;
+      a.hp -= damage;
+      a.flash = Math.max(a.flash || 0, 0.12);
+      const unit = this.units[a.un];
+      if (unit && unit.morState !== ZS.BattleMorale.ROUTING) {
+        unit.moraleShock += damage * 0.04;
+      }
+      if (a.hp <= 0) this._kill(a, patch.owner);
+    }
+
     /* ---------- contract: frame ---------- */
 
     frame(agents, dt, t, grid) {
@@ -596,6 +889,13 @@
       this.bt = t - this.t0;
       this.talkingNow = 0;
       this._updateProjectiles(dt, grid);
+      this._updateFirePatches(dt, grid);
+      if (this.map && this.map.gate && this.map.gate.broken && !this.gateBreached) {
+        this._onGateBreach(
+          (this.map.gate.x0 + this.map.gate.x1) * 0.5,
+          (this.map.gate.y0 + this.map.gate.by) * 0.5,
+        );
+      }
 
       // routed men who leave the field are gone for good
       for (let i = 0; i < agents.length; i++) {
@@ -651,6 +951,7 @@
 
       if (this.morale) this.morale.frame(dt);
       if (this.abilities) this.abilities.update(dt);
+      if (this.duels) this.duels.update(dt);
 
       // formations wheel toward their heading rather than snapping
       for (const u of this.units) {
@@ -918,6 +1219,26 @@
        evenly matched. `BattleResult.winner` already admits "draw" (§4.3). */
     _checkEnd() {
       if (this.over) return;
+      if (
+        this.map &&
+        this.map.kind === "fort" &&
+        this.gateBreached &&
+        this.map.objective &&
+        this.map.objective.kind === "breach"
+      ) {
+        const objective = this.map.objective;
+        const r2 = objective.r * objective.r;
+        for (let i = 0; i < this.units.length; i++) {
+          const unit = this.units[i];
+          if (unit.side !== this.attackerSide || unit.st === ROUT || !unit.alive) continue;
+          const dx = unit.cx - objective.x;
+          const dy = unit.cy - objective.y;
+          if (dx * dx + dy * dy <= r2) {
+            this._finish(this.attackerSide);
+            return;
+          }
+        }
+      }
       for (let s = 0; s < 2; s++) {
         if (this.sides[s].total0 > 0 && this.sides[s].alive <= 0) {
           this._finish(1 - s);
@@ -925,6 +1246,10 @@
         }
       }
       if (this.bt - this.lastBloodT > STALEMATE) {
+        if (this.map && this.map.kind === "fort" && !this.gateBreached) {
+          this._finish(this.defenderSide, true);
+          return;
+        }
         const a0 = this.sides[0].alive,
           a1 = this.sides[1].alive;
         const gap = Math.abs(a0 - a1) / Math.max(1, a0 + a1);
@@ -965,7 +1290,7 @@
       a.fatigue = ZS.clamp(a.fatigue + (sp > 90 ? dt * 0.05 * fatigueScale : -dt * 0.03), 0, 1);
 
       if (a.fleeing && a.rallyT <= 0) {
-        this._flee(a, dt, grid);
+        this._flee(a, dt, t, grid, nav);
         return;
       }
       if (this.over) {
@@ -995,10 +1320,18 @@
         dy = sy - a.y;
       const d = Math.hypot(dx, dy);
       const k = Math.min(1, dt * 2.4);
+      let slotClear = true;
+      if (this.map) {
+        const mask = this.map.collisionMask(a.side, a.type);
+        slotClear = this._nav.isWalkable(sx, sy, mask);
+        if (slotClear && a.stuckT > 0.25 && !this._nav.los(a.x, a.y, sx, sy, mask, true)) {
+          slotClear = false;
+        }
+      }
       // the unit drive carries the block; the slot seek only shapes the edges
       let txv = u.dx,
         tyv = u.dy;
-      if (d > 9) {
+      if (d > 9 && slotClear) {
         const cohesion = u.cohesion || 0.72;
         txv += (dx / d) * sp * cohesion;
         tyv += (dy / d) * sp * cohesion;
@@ -1006,11 +1339,42 @@
       } else if (faceHead) a.a = u.head + (a.sf || 0);
       a.vx += (txv - a.vx) * k;
       a.vy += (tyv - a.vy) * k;
-      a.wantMove = d > 9 || u.dx * u.dx + u.dy * u.dy > 16;
+      a.wantMove = (d > 9 && slotClear) || u.dx * u.dx + u.dy * u.dy > 16;
     }
 
-    _flee(a, dt, grid) {
+    _flee(a, dt, t, grid, nav) {
       if (a.rallyT > 0) return;
+      if (this.map && !a.free) {
+        let tx = a.fleeExitX;
+        let ty = a.fleeExitY;
+        if (
+          this.map.kind === "fort" &&
+          a.side === this.defenderSide &&
+          !this.gateBreached &&
+          this.map.objective &&
+          this.map.objective.inside
+        ) {
+          tx = this.map.objective.inside.x;
+          ty = this.map.objective.inside.y;
+        }
+        const dx = tx - a.x;
+        const dy = ty - a.y;
+        if (dx * dx + dy * dy < 42 * 42) {
+          if (this.map.kind === "fort" && a.side === this.defenderSide && !this.gateBreached) {
+            a.vx *= Math.max(0, 1 - dt * 5);
+            a.vy *= Math.max(0, 1 - dt * 5);
+            a.wantMove = false;
+            return;
+          }
+          a.free = true;
+          a.fdirC = Math.atan2(ty - this.h * 0.5, tx - this.w * 0.5);
+        } else {
+          TG.x = tx;
+          TG.y = ty;
+          ZS.planAndFollow(a, TG, this.walkBlocked(a), FLEE_SPD[a.type], dt, t, nav);
+          return;
+        }
+      }
       if (a.fdirC < -900) {
         // aim once, at the rout, and keep it: re-aiming lets a clump orbit
         // its pursuit forever and the field never clears (learned at Cannae)
@@ -1057,6 +1421,94 @@
 
     /* ---------- per-type steering ---------- */
 
+    _hasLOS(a, b) {
+      if (!this.map || !this._nav) return true;
+      return this._nav.los(a.x, a.y, b.x, b.y, this.map.collisionMask(a.side, a.type), true);
+    }
+
+    _gateTarget(a) {
+      const gate = this.map && this.map.gate;
+      if (!gate || gate.broken || gate.hp <= 0 || a.side !== this.attackerSide) return null;
+      return gate;
+    }
+
+    _strikeGate(a, u, reach) {
+      const gate = this._gateTarget(a);
+      if (!gate) return false;
+      const gx = ZS.clamp(a.x, gate.x0, gate.x1);
+      const gy = ZS.clamp(a.y, gate.y0, gate.by);
+      const dx = gx - a.x;
+      const dy = gy - a.y;
+      const d2 = dx * dx + dy * dy;
+      const range = reach + (a.type === F().RAM ? 20 : 7);
+      if (d2 > range * range) return false;
+
+      u.contact = 0.6;
+      a.a = Math.atan2(dy, dx);
+      a.vx *= 0.45;
+      a.vy *= 0.45;
+      if (a.atkCd <= 0) {
+        a.atkCd = ATK_CD[a.type] * (0.9 + ZS.hash(a.seed + gate.hp) * 0.25);
+        a.atk = 0.18;
+        const damage = a.type === F().RAM ? 4.5 : a.type === F().ELEPHANT ? 2.4 : 0.55;
+        const broke = this.map.damageGate(damage);
+        this.fx.push({
+          x: gx,
+          y: gy,
+          t: 0.28,
+          clash: true,
+          seed: a.seed + gate.hp,
+        });
+        if (broke) this._onGateBreach(gx, gy);
+      }
+      return true;
+    }
+
+    _bombardGate(a, u, dt) {
+      if (a.type !== F().CATAPULT) return false;
+      const gate = this._gateTarget(a);
+      if (!gate) return false;
+      const gx = (gate.x0 + gate.x1) * 0.5;
+      const gy = (gate.y0 + gate.by) * 0.5;
+      const dx = gx - a.x;
+      const dy = gy - a.y;
+      if (dx * dx + dy * dy > SHOOT_R[a.type] * SHOOT_R[a.type]) return false;
+      a.a = Math.atan2(dy, dx);
+      if (a.thrCd <= 0) {
+        a.thrCd = SHOOT_CD[a.type] * (0.9 + ZS.hash(a.seed + gate.hp) * 0.22);
+        a.thr = 0.24;
+        const broke = this.map.damageGate(3.2);
+        this.fx.push({
+          x: gx,
+          y: gy,
+          t: 0.72,
+          stoneImpact: true,
+          r: 34,
+          seed: a.seed + gate.hp,
+        });
+        if (ZS.sound) ZS.sound.event("stone_impact", gx, gy);
+        if (broke) this._onGateBreach(gx, gy);
+      } else this._seekSlot(a, u, dt, 24, true);
+      return true;
+    }
+
+    _onGateBreach(x, y) {
+      if (this.gateBreached) return;
+      this.gateBreached = true;
+      this.lastBloodT = this.bt;
+      this.fx.push({ x, y, t: 0.8, stoneImpact: true, r: 62, seed: this.rnd(0, 997) });
+      if (ZS.sound) ZS.sound.event("door_break", x, y);
+      const objective = this.map && this.map.objective;
+      if (!objective) return;
+      for (let i = 0; i < this.units.length; i++) {
+        const unit = this.units[i];
+        if (unit.side !== this.attackerSide || unit.st === ROUT || !unit.alive) continue;
+        unit.orders.length = 0;
+        unit.orders.push({ kind: "attack", x: objective.x, y: objective.y, form: null });
+        this._beginOrder(unit, unit.orders[0]);
+      }
+    }
+
     _updateFoot(a, dt, t, grid, nav, u) {
       a.atkCd -= dt;
       a.atk = Math.max(0, a.atk - dt);
@@ -1064,7 +1516,7 @@
       let be = null,
         bd = reach * reach;
       grid.query(a.x, a.y, reach + 5, (b) => {
-        if (b.side === a.side || b.dead) return;
+        if (b.side === a.side || b.dead || !this._hasLOS(a, b)) return;
         const dx = b.x - a.x,
           dy = b.y - a.y;
         const d2 = dx * dx + dy * dy;
@@ -1097,6 +1549,8 @@
           a.vy += Math.sin(a.a) * 46 * dt;
           a.wantMove = true;
         }
+      } else if (this._strikeGate(a, u, reach)) {
+        a.wantMove = false;
       } else {
         /* Nobody, or only men running away: keep the stride and the shape.
            Braking for routers froze whole blocks mid-march (the drive said 43
@@ -1104,10 +1558,13 @@
            formations apart across the field. Pursuit is a *unit* decision —
            see the hunt in _driveUnit — not something each man freelances. */
         this._seekSlot(a, u, dt, SEP_SLOT, true);
-        if (a.stuckT > 1.2) {
+        if (
+          a.stuckT > 1.2 &&
+          (!this.map || this._nav.isWalkable(a.sx2, a.sy2, this.walkBlocked(a)))
+        ) {
           TG.x = a.sx2;
           TG.y = a.sy2;
-          ZS.planAndFollow(a, TG, true, SEP_SLOT, dt, t, nav);
+          ZS.planAndFollow(a, TG, this.walkBlocked(a), SEP_SLOT, dt, t, nav);
         }
       }
     }
@@ -1119,7 +1576,7 @@
       let be = null,
         bd = R * R;
       grid.query(a.x, a.y, R, (b) => {
-        if (b.side === a.side || b.dead) return;
+        if (b.side === a.side || b.dead || !this._hasLOS(a, b)) return;
         const dx = b.x - a.x,
           dy = b.y - a.y;
         const d2 = dx * dx + dy * dy;
@@ -1154,6 +1611,8 @@
         } else {
           this._seekSlot(a, u, dt, 30, true);
         }
+      } else if (this._bombardGate(a, u, dt)) {
+        a.wantMove = false;
       } else {
         this._seekSlot(a, u, dt, 40, true);
       }
@@ -1183,7 +1642,7 @@
           let be = null,
             bd = R * R;
           grid.query(a.x, a.y, R + 4, (b) => {
-            if (b.side === a.side || b.dead) return;
+            if (b.side === a.side || b.dead || !this._hasLOS(a, b)) return;
             const dx = b.x - a.x,
               dy = b.y - a.y;
             const d2 = dx * dx + dy * dy;
@@ -1287,6 +1746,20 @@
         p.y = p.y0 + (p.y1 - p.y0) * q;
 
         if (p.kind !== PROJ_STONE && q > 0.04) {
+          if (
+            this.map &&
+            !this._nav.los(
+              p.px,
+              p.py,
+              p.x,
+              p.y,
+              this.map.collisionMask(p.side, p.owner ? p.owner.type : -1),
+              true,
+            )
+          ) {
+            this._impactProjectile(p, null, grid);
+            continue;
+          }
           this._projectileProbe = p;
           this._projectileCandidate = null;
           this._projectileBest = Infinity;
@@ -1455,7 +1928,12 @@
       if (a.flag && !a.flagDropped) this._dropFlag(a);
       a.routFlag = 1;
       a.fleeing = true;
-      a.free = true;
+      a.free = !this.map;
+      if (!a.free) {
+        const exit = this.map.deploy[a.side].exit;
+        a.fleeExitX = exit.x;
+        a.fleeExitY = exit.y;
+      }
       const s = this.sides[a.side];
       s.routed++;
       s.alive--;
@@ -1524,7 +2002,8 @@
         stallT: 0, // seconds since that got any better
         sel: false,
         mem: [],
-        flag: opt.side === 0 ? ZS.flag.PRESETS.liu : ZS.flag.PRESETS.cao,
+        flag:
+          this.sideFlags[opt.side] || (opt.side === 0 ? ZS.flag.PRESETS.liu : ZS.flag.PRESETS.cao),
         flagUp: true,
         typeSpd: SPD[type],
         typeChargeSpd: CHARGE_SPD[type] || SPD[type],
@@ -1537,24 +2016,35 @@
       const ch = Math.cos(opt.head),
         sh = Math.sin(opt.head);
       const nav = this._nav;
+      const collision = this.map ? this.map.collisionMask(opt.side, type) : true;
+      const deploymentReach = this.map ? this.map._reachFor(opt.side) : null;
+      let actualX = 0,
+        actualY = 0;
       for (let k = 0; k < opt.n; k++) {
         const s = u.slots[k];
         const lx = s.x + this.rnd(-1.5, 1.5);
         const ly = s.y + this.rnd(-1.5, 1.5);
         let x = opt.x + lx * sh + ly * ch;
         let y = opt.y - lx * ch + ly * sh;
-        const p = nav.nearestWalkable(x, y, 240, true);
+        let p = null;
+        if (this.map) {
+          const i = nav.idx(x, y);
+          if (i < 0 || !deploymentReach[i] || !nav.isWalkable(x, y, collision)) {
+            p = this.map.normalizeGoal(opt.side, x, y);
+          }
+        } else p = nav.nearestWalkable(x, y, 240, collision);
         if (p) {
           x = p.x;
           y = p.y;
         }
-        /* The head-rank man carries 劉 for the player or 曹 for the computer.
-           He replaces one ordinary soldier, so unit population stays exact. */
+        /* The head-rank man carries his faction's campaign banner. He replaces
+           one ordinary soldier, so unit population stays exact. */
         const isBearer = k === 0;
         const agentType = isBearer ? F().STANDARD : type;
         const a = this.makeAgent(x, y, 0, {
           side: opt.side,
           faction: opt.faction,
+          factionId: this.sideFactionIds[opt.side],
           type: agentType,
           tier: isBearer ? F().NCO : F().TROOPER,
           un,
@@ -1567,7 +2057,20 @@
         });
         agents.push(a);
         u.mem.push(a);
+        actualX += x;
+        actualY += y;
         this.sides[opt.side].alive++;
+      }
+      if (u.mem.length) {
+        let centerX = actualX / u.mem.length;
+        let centerY = actualY / u.mem.length;
+        if (this.map) {
+          const center = this.map.normalizeGoal(opt.side, centerX, centerY);
+          centerX = center.x;
+          centerY = center.y;
+        }
+        u.cx = u.tx = centerX;
+        u.cy = u.ty = centerY;
       }
       u.lodRep = u.mem[0] || null;
       return u;
@@ -1652,6 +2155,12 @@
           };
         a.portrait = spec.portrait || (almanac && almanac.portrait) || null;
         a.skillIds = spec.skillIds || (almanac && almanac.skillIds) || ["inspire"];
+        a.itemIds = spec.itemIds || (almanac && almanac.itemIds) || null;
+        a.duelAttack = Number(spec.duelAttack) || 0;
+        a.duelWilling = spec.duelWilling;
+        a.duelTrait = spec.duelTrait || null;
+        a.duelItemMod = Number(spec.duelItemMod) || 0;
+        a.duelAttackMul = Number(spec.duelAttackMul) || 1;
         a.generalLevel =
           Number(spec.level !== undefined ? spec.level : almanac && almanac.level) || 1;
         a.auraR = 70 + tong * 0.9;
@@ -1668,6 +2177,15 @@
     _deploySide(agents, side, spec, x, y, head, span) {
       const n = spec.onField | 0;
       const comp = spec.comp;
+      /* Campaign ids are stable strings; the figure palette is an eight-slot
+         numeric ramp. Keeping both prevents a warlord id from becoming NaN in
+         the renderer while BattleResult still names the actual faction. */
+      const visual =
+        typeof spec.colorSlot === "number"
+          ? spec.colorSlot
+          : typeof spec.factionId === "number"
+            ? spec.factionId
+            : side;
       const order = [
         ["spear", F().SPEAR, 4],
         ["dao", F().DAO, 4],
@@ -1698,10 +2216,11 @@
          open flanks; special corps keep their own readable lane. */
       const ch = Math.cos(head),
         sh = Math.sin(head);
-      const place = (across, back) => ({
-        x: x + across * sh + back * ch,
-        y: y - across * ch + back * sh,
-      });
+      const place = (across, back) => {
+        const px = x + across * sh + back * ch;
+        const py = y - across * ch + back * sh;
+        return this.map ? this.map.normalizeGoal(side, px, py) : { x: px, y: py };
+      };
       const built = [];
       /* Keep a thousand-man army readable: add depth as blocks grow instead
          of letting a four-rank unit stretch hundreds of pixels sideways into
@@ -1725,7 +2244,7 @@
         built.push(
           this._addUnit(agents, {
             side,
-            faction: spec.factionId,
+            faction: visual,
             type: F().SPEAR,
             n: half,
             x: p1.x,
@@ -1740,7 +2259,7 @@
           built.push(
             this._addUnit(agents, {
               side,
-              faction: spec.factionId,
+              faction: visual,
               type: F().SPEAR,
               n: spear - half,
               x: p2.x,
@@ -1757,7 +2276,7 @@
         built.push(
           this._addUnit(agents, {
             side,
-            faction: spec.factionId,
+            faction: visual,
             type: F().DAO,
             n: dao,
             x: p.x,
@@ -1773,7 +2292,7 @@
         built.push(
           this._addUnit(agents, {
             side,
-            faction: spec.factionId,
+            faction: visual,
             type: F().BOW,
             n: bow,
             x: p.x,
@@ -1789,7 +2308,7 @@
         built.push(
           this._addUnit(agents, {
             side,
-            faction: spec.factionId,
+            faction: visual,
             type: F().JI,
             n: ji,
             x: p.x,
@@ -1806,7 +2325,7 @@
         built.push(
           this._addUnit(agents, {
             side,
-            faction: spec.factionId,
+            faction: visual,
             type: F().CAV,
             n: half,
             x: p1.x,
@@ -1820,7 +2339,7 @@
           built.push(
             this._addUnit(agents, {
               side,
-              faction: spec.factionId,
+              faction: visual,
               type: F().CAV,
               n: cav - half,
               x: p2.x,
@@ -1836,7 +2355,7 @@
         built.push(
           this._addUnit(agents, {
             side,
-            faction: spec.factionId,
+            faction: visual,
             type: F().HBOW,
             n: hbow,
             x: p.x,
@@ -1851,7 +2370,7 @@
         built.push(
           this._addUnit(agents, {
             side,
-            faction: spec.factionId,
+            faction: visual,
             type: F().CATAPULT,
             n: catapult,
             x: p.x,
@@ -1867,7 +2386,7 @@
         built.push(
           this._addUnit(agents, {
             side,
-            faction: spec.factionId,
+            faction: visual,
             type: F().RAM,
             n: ram,
             x: p.x,
@@ -1883,7 +2402,7 @@
         built.push(
           this._addUnit(agents, {
             side,
-            faction: spec.factionId,
+            faction: visual,
             type: F().STANDARD,
             n: standard,
             x: p.x,
@@ -1899,7 +2418,7 @@
         built.push(
           this._addUnit(agents, {
             side,
-            faction: spec.factionId,
+            faction: visual,
             type: F().HUBAO,
             n: hubao,
             x: p.x,
@@ -1915,7 +2434,7 @@
         built.push(
           this._addUnit(agents, {
             side,
-            faction: spec.factionId,
+            faction: visual,
             type: F().ZHUGE,
             n: zhuge,
             x: p.x,
@@ -1931,7 +2450,7 @@
         built.push(
           this._addUnit(agents, {
             side,
-            faction: spec.factionId,
+            faction: visual,
             type: F().ELEPHANT,
             n: elephant,
             x: p.x,
@@ -2007,6 +2526,15 @@
       this.generals = [];
       this.nextUid = 1;
       this.orderLog = [];
+      this.duelLog = [];
+      this.duels = null;
+      this._agents = agents;
+      this.fireSeq = 0;
+      this.ambushSeq = 0;
+      for (let i = 0; i < this.firePatches.length; i++) {
+        this.firePatches[i].active = false;
+        this.firePatches[i].owner = null;
+      }
       this.talkingNow = 0;
       this.barkT = 0.8;
       this.barkSeq = 0;
@@ -2026,19 +2554,48 @@
       this.h = world.h;
       if (this.fx) this.fx.length = 0;
       this._nav = world.nav;
+      this.attackerSide =
+        setup.attackerSide === 1 || (setup.field && setup.field.attackerSide === 1) ? 1 : 0;
+      this.defenderSide = 1 - this.attackerSide;
+      this.gateBreached = !!(this.map && this.map.gate && this.map.gate.broken);
 
-      const f = this._findField(world, world.nav);
-      this.field = f;
-      const gap = 1150 * f.s;
-      const span = 860 * f.s;
-      // side 0 (the player) deploys west facing east; side 1 east facing west
-      this._deploySide(agents, 0, setup.sides[0], f.x - gap / 2, f.y, 0, span);
-      this._deploySide(agents, 1, setup.sides[1], f.x + gap / 2, f.y, Math.PI, span);
+      for (let side = 0; side < 2; side++) {
+        const spec = setup.sides[side] || {};
+        this.sideFactionIds[side] = spec.factionId;
+        this.sideFlags[side] =
+          (spec.banner && ZS.flag.get(spec.banner)) ||
+          ZS.flag.forFaction(typeof spec.colorSlot === "number" ? spec.colorSlot : side);
+        this.reserves[side] = {
+          left: Math.max(0, spec.reserve | 0),
+          t: 6 + side * 1.5,
+          comp: spec.comp,
+        };
+      }
+
+      if (this.map) {
+        this.field = this.map;
+        for (let side = 0; side < 2; side++) {
+          const d = this.map.deploy[side];
+          this._deploySide(agents, side, setup.sides[side], d.x, d.y, d.head, d.span);
+        }
+      } else {
+        const f = this._findField(world, world.nav);
+        this.field = f;
+        const gap = 1150 * f.s;
+        const span = 860 * f.s;
+        // side 0 (the player) deploys west facing east; side 1 east facing west
+        this._deploySide(agents, 0, setup.sides[0], f.x - gap / 2, f.y, 0, span);
+        this._deploySide(agents, 1, setup.sides[1], f.x + gap / 2, f.y, Math.PI, span);
+      }
       for (let i = 0; i < 2; i++) this.sides[i].total0 = this.sides[i].alive;
       this.morale = new ZS.BattleMorale(this);
       this.morale.init();
       this.abilities = new ZS.BattleAbilities(this);
       this.abilities.init();
+      if (ZS.BattleDuels && setup.duels !== false) {
+        this.duels = new ZS.BattleDuels(this);
+        this.duels.init();
+      }
       this.feel = new ZS.BattleFeel(this);
       this.commander = new ZS.SanguoCommanderAI(this);
       this.commander.init();
@@ -2046,8 +2603,61 @@
       if (ZS.Command) ZS.Command.attach(this);
     }
 
-    maintain() {
-      // P1 has no reserves; the reserve stream arrives with FIELD_CAP at P4
+    maintain(agents, dt) {
+      if (this.over) return;
+      for (let side = 0; side < 2; side++) {
+        const reserve = this.reserves[side];
+        if (!reserve || reserve.left <= 0) continue;
+        reserve.t -= dt;
+        if (reserve.t > 0) continue;
+        const count = Math.min(160, reserve.left);
+        reserve.left -= count;
+        reserve.t = 5.5 + ZS.hash(this.setup.seed + side * 97 + reserve.left) * 1.8;
+        const base = this.map
+          ? this.map.deploy[side]
+          : {
+              x: side === 0 ? 100 : this.w - 100,
+              y: this.h * 0.5,
+              head: side === 0 ? 0 : Math.PI,
+              span: 520,
+            };
+        const back = 115;
+        const x = ZS.clamp(base.x - Math.cos(base.head) * back, 40, this.w - 40);
+        const y = ZS.clamp(base.y - Math.sin(base.head) * back, 40, this.h - 40);
+        const built = this._deploySide(
+          agents,
+          side,
+          {
+            factionId: this.sideFactionIds[side],
+            colorSlot: this.setup.sides[side].colorSlot,
+            comp: reserve.comp,
+            onField: count,
+            reserve: 0,
+            generals: [],
+          },
+          x,
+          y,
+          base.head,
+          Math.min(base.span, 520),
+        );
+        this.sides[side].total0 += count;
+        this._primeReinforcementMorale(built, side);
+      }
+    }
+
+    _primeReinforcementMorale(units, side) {
+      const ceiling = this.sides[side].moraleMax || 70;
+      for (let i = 0; i < units.length; i++) {
+        const u = units[i];
+        u.moraleMax = ceiling;
+        u.morale = ceiling;
+        u.moraleShock = 0;
+        u.morState = ZS.BattleMorale.STEADY;
+        u.waveringT = 0;
+        u.rallyProgress = 0;
+        u.nearGeneral = null;
+        u.cohesion = 0.72;
+      }
     }
 
     left(_agents) {
@@ -2317,6 +2927,32 @@
               0.8,
             );
           }
+        } else if (sh.duel) {
+          const k = sh.t / 0.32;
+          const px = -sh.dy;
+          const py = sh.dx;
+          c.strokeStyle = "rgba(146,74,45," + (0.82 * k).toFixed(2) + ")";
+          c.lineWidth = 1.8;
+          ZS.wline(
+            c,
+            sh.x - sh.dx * 13 - px * 8,
+            sh.y - sh.dy * 13 - py * 8,
+            sh.x + sh.dx * 13 + px * 8,
+            sh.y + sh.dy * 13 + py * 8,
+            sh.seed,
+            0.8,
+          );
+          ZS.wline(
+            c,
+            sh.x - sh.dx * 13 + px * 8,
+            sh.y - sh.dy * 13 + py * 8,
+            sh.x + sh.dx * 13 - px * 8,
+            sh.y + sh.dy * 13 - py * 8,
+            sh.seed + 11,
+            0.8,
+          );
+          c.strokeStyle = "rgba(92,72,50," + (0.5 * k).toFixed(2) + ")";
+          ZS.wcirc(c, sh.x, sh.y, 7 + (1 - k) * 18, sh.seed + 19, 1.3);
         } else if (sh.inspire) {
           const k = sh.t / 0.85;
           const eased = 1 - k * k;
@@ -2382,8 +3018,49 @@
       }
     }
 
-    /* Fallen standards belong on the ground pass, beneath feet and bodies. */
+    _drawFireGround(c, t) {
+      for (let i = 0; i < this.firePatches.length; i++) {
+        const patch = this.firePatches[i];
+        if (!patch.active) continue;
+        const life = ZS.clamp(patch.t / Math.max(0.01, patch.life), 0, 1);
+        c.save();
+        c.globalAlpha = 0.28 + life * 0.3;
+        c.fillStyle = "rgba(171,92,48,0.18)";
+        c.strokeStyle = "rgba(116,67,42,0.54)";
+        c.lineWidth = 1.25;
+        ZS.wcirc(c, patch.x, patch.y, patch.r * (0.9 + life * 0.08), patch.seed, 3.2);
+        c.fill();
+        c.globalAlpha = 0.35 + life * 0.45;
+        for (let j = 0; j < 9; j++) {
+          const an = ZS.hash(patch.seed + j * 37) * Math.PI * 2;
+          const d = patch.r * (0.12 + ZS.hash(patch.seed + j * 41) * 0.7);
+          const x = patch.x + Math.cos(an) * d;
+          const y = patch.y + Math.sin(an) * d;
+          const flame = 7 + ZS.hash(patch.seed + j * 43) * 11;
+          const sway = Math.sin(t * 5 + j * 1.7) * 2.5;
+          c.strokeStyle = j % 3 ? "rgba(169,83,42,0.82)" : "rgba(114,72,48,0.75)";
+          c.lineWidth = 1.35;
+          ZS.wline(c, x - 3, y + 2, x + sway, y - flame, patch.seed + j * 13, 1.1);
+          ZS.wline(c, x + 3, y + 2, x + sway, y - flame, patch.seed + j * 13 + 5, 0.9);
+        }
+        c.globalAlpha = 0.26;
+        c.strokeStyle = "rgba(61,52,43,0.72)";
+        c.lineWidth = 1;
+        for (let j = 0; j < 7; j++) {
+          const an = ZS.hash(patch.seed + j * 23) * Math.PI * 2;
+          const d = patch.r * (0.2 + ZS.hash(patch.seed + j * 29) * 0.65);
+          const x = patch.x + Math.cos(an) * d;
+          const y = patch.y + Math.sin(an) * d;
+          ZS.wline(c, x - 5, y - 2, x + 6, y + 3, patch.seed + j * 31, 0.7);
+        }
+        c.restore();
+      }
+    }
+
+    /* Terrain and fallen standards belong beneath feet and bodies. */
     drawGround(c, _world, t) {
+      if (this.map) this.map.drawGround(c, t);
+      this._drawFireGround(c, t);
       for (let i = 0; i < this.fallenFlags.length; i++) {
         const f = this.fallenFlags[i];
         c.save();
@@ -2395,6 +3072,10 @@
         if (ZS.flag) ZS.flag.draw(c, f.flag, -15, -12, 25, 14, t);
         c.restore();
       }
+    }
+
+    drawBlock(c, b, t) {
+      if (this.map) this.map.drawBlock(c, b, t);
     }
 
     /* Runs every frame, in world space, effects or not (js/draw.js). */

@@ -1,10 +1,9 @@
 /* ZS.Roster — the general seam (docs/SANGUO-DESIGN.md §4.1, §9).
 
-   The general model itself (`js/campaign/general.js`) and the almanac
-   (`js/campaign/data/generals.js`) are P5's RPG work and are being built
-   separately. P3 still has to *refer* to generals: a faction has a leader, an
-   army carries 1-3 of them, and the province panel wants to say who is
-   governing.
+   The immutable almanac answers identity and art; a Campaign's `generals`
+   table answers mutable progression. Callers that have a campaign pass it to
+   stats()/snapshot() so equipment, levels and injuries come from that save.
+   Calls without one retain the P3 catalogue fallback.
 
    So the campaign never touches a general record directly. It stores ids and
    asks here, and this file answers from whatever is loaded:
@@ -63,6 +62,10 @@
     return index;
   }
 
+  function runtimeRecord(id, camp) {
+    return (camp && camp.generals && camp.generals[id]) || null;
+  }
+
   const Roster = {
     NEUTRAL,
 
@@ -78,6 +81,13 @@
       return build().get(id) || null;
     },
 
+    /* The mutable campaign record. Keeping this lookup explicit avoids a
+       process-global "current campaign", which would make two deterministic
+       test campaigns leak progression into one another. */
+    record(id, camp) {
+      return runtimeRecord(id, camp);
+    },
+
     /* Display name. Falls back to the id so a missing entry is visible and
        greppable rather than blank — the same rule ZS.i18n.t() follows. */
     name(id) {
@@ -89,18 +99,20 @@
     /* Base attributes, always a complete record. When P5's ZS.General is
        loaded its derived read wins, so items and injuries are already folded
        in by the time the campaign sees a number. */
-    stats(id) {
+    stats(id, camp) {
       const g = this.get(id);
-      if (!g) return NEUTRAL;
-      if (ZS.General && typeof ZS.General.derive === "function") {
-        const d = ZS.General.derive(g);
+      const record = runtimeRecord(id, camp);
+      if (!g && !record) return NEUTRAL;
+      if (record && ZS.General && typeof ZS.General.derive === "function") {
+        const d = ZS.General.derive(record);
         if (d) return d;
       }
+      const sourceRecord = record || g;
       let out = null;
       for (const k of STAT_KEYS) {
-        if (typeof g[k] === "number") {
+        if (typeof sourceRecord[k] === "number") {
           if (!out) out = { ...NEUTRAL };
-          out[k] = g[k];
+          out[k] = sourceRecord[k];
         }
       }
       return out || NEUTRAL;
@@ -135,8 +147,8 @@
     },
 
     /* A one-line read for the campaign panel. */
-    line(id) {
-      const s = this.stats(id);
+    line(id, camp) {
+      const s = this.stats(id, camp);
       return ZS.i18n.t("campaign.general.line", {
         name: this.name(id),
         wu: s.wu,
@@ -152,7 +164,16 @@
     snapshot(id, opts) {
       const o = opts || {};
       const g = this.get(id);
-      const s = this.stats(id);
+      const record = runtimeRecord(id, o.camp);
+      if (record && ZS.General && typeof ZS.General.snapshot === "function") {
+        const snap = ZS.General.snapshot(record);
+        if (snap) {
+          if (o.name) snap.name = o.name;
+          if (o.unitType) snap.unitType = o.unitType;
+          return snap;
+        }
+      }
+      const s = this.stats(id, o.camp);
       return {
         id: id,
         name: g && g.name ? g.name : o.name || "battle.general.unknown",
@@ -172,9 +193,9 @@
 
     /* Governing a province is `zheng` work (§4.1's province_income). Kept here
        so the one formula lives beside the stat read. */
-    governBonus(id) {
+    governBonus(id, camp) {
       if (!id) return 1;
-      return 1 + this.stats(id).zheng * 0.01;
+      return 1 + this.stats(id, camp).zheng * 0.01;
     },
   };
 
