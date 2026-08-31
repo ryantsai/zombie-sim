@@ -1,7 +1,7 @@
 # Verification suites
 
-Playwright checks that ship with the repo. `npm test` runs `oxlint` first, then the four
-assertion suites and the almanac gate, in the order that fails fastest:
+Playwright checks that ship with the repo. `npm test` runs `oxlint` first, then every
+phase suite and the almanac gate, in the order that fails fastest:
 
 ```bash
 npm test
@@ -13,6 +13,7 @@ npm test
 | `sanguo-p1.js`          | The skirmish battle: deployment, the command layer, determinism, no hangs, clean teardown                                                                                                                                                                                                    |
 | `sanguo-p3.js`          | The campaign: map invariants, the general almanac, every order and its refusals, ten seasons of invariants, save/reload/resume                                                                                                                                                               |
 | `sanguo-campaign-ui.js` | The campaign map as an _interface_: that the warlord palette stays separable (and further apart still where two of them share a border), that the guide line and the tooltip track what is selected, and that click-to-march and drag-to-march give the same order without panning the sheet |
+| `hold-p4.js`            | The Hold through P4: bounded digging, reinforced save restore, complete deterministic wave plans, edge spawns, locked night controls, dusk/night/dawn, rewards, soft-fail, and non-replayable dawn persistence                                                                         |
 | `pages-regression.js`   | That `zombiesim.html`, `battle.html` and `hold.html` still boot, and that each one delivers every module it loads — this is the only thing standing between the three original pages and a core change                                                                                       |
 | `sanguo-seed-sweep.js`  | The long no-hang sweep. Slow; not in `npm test`, run it after touching battle movement                                                                                                                                                                                                       |
 | `campaign-sweep.js`     | Campaign pacing probe — how fast ground changes hands (`ISSUES.md` #10). Reports numbers, asserts nothing                                                                                                                                                                                    |
@@ -43,6 +44,9 @@ Two guards, because they catch different things:
 
 Nothing is hand-maintained: add a module and the manifest picks it up from the
 source. Run `npm run test:manifest` to print what each page promises.
+
+GitHub runs the same `npm test` command for every push and pull request through
+`.github/workflows/verify.yml`, including the font subset coverage check.
 
 ## The split with `.verify/`
 

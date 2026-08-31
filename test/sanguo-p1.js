@@ -147,6 +147,8 @@ async function main() {
     const s = ZS.engine.scenario;
     const byType = {};
     for (const u of s.units) byType[u.type] = (byType[u.type] || 0) + u.size0;
+    const hud0 = s.hud(ZS.Sim.agents, ZS.Sim.wave);
+    const hud1 = s.hud(ZS.Sim.agents, ZS.Sim.wave);
     return {
       state: ZS.App.state,
       appLoop: ZS.App.running,
@@ -160,7 +162,8 @@ async function main() {
       menuHidden: !document.querySelector(".panel.on"),
       barShown: !!document.querySelector(".battlebar.on"),
       commandBound: ZS.Command.bound,
-      hudTitle: s.hud([], 1).title,
+      hudTitle: hud0.title,
+      hudStable: hud0 === hud1 && hud0.legend === hud1.legend && hud0.overlay === hud1.overlay,
     };
   });
   eq("the shell is in the BATTLE state", dep.state, "battle");
@@ -175,6 +178,7 @@ async function main() {
   ok("the battle bar is up", dep.barShown);
   ok("the command layer attached", dep.commandBound);
   eq("the HUD speaks the current locale", dep.hudTitle, "沙場試鋒");
+  ok("the HUD record and callbacks are reused", dep.hudStable, dep);
 
   /* ---- selection and orders ---------------------------------------- */
   console.log("\n[command]");

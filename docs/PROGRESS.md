@@ -18,8 +18,17 @@ re-deriving anything.
 |---|---|
 | **Phase** | **P7 — complete v1 campaign** |
 | **Status** | ✅ **complete** (P0–P7 ✅) |
-| **Verify** | `npm test` now runs every phase suite: P0 boot/font/save/file://; P1 deterministic real-time battle; P3 campaign; P4 map/handoff/turn/battle; P5 generals/duels/abilities/UI; P6 doctrines/events/logistics/politics/victory/RemoteStore; P7 deterministic long-campaign sweep; original-page regression; 200-general validator. `test/sanguo-map-shots.js` renders all five biomes, three towns and three forts for visual inspection. |
+| **Verify** | `npm test` now runs every phase suite: P0 boot/font/save/file://; P1 deterministic real-time battle; P3 campaign; P4 map/handoff/turn/battle; P5 generals/duels/abilities/UI; P6 doctrines/events/logistics/politics/victory/RemoteStore; P7 deterministic long-campaign sweep; The Hold through its P4 dawn; original-page regression; 200-general validator. `test/sanguo-map-shots.js` renders all five biomes, three towns and three forts for visual inspection. |
 | **Updated** | 2026-08-31 |
+
+### Active follow-on — The Hold
+
+The Hold is complete through P4: tiles/dig, blocks/economy/save, the soldier
+ring/larder/upgrades, and the full deterministic night → dawn loop now ship and
+have committed coverage in `test/hold-p4.js`. Its next coherent slice is P5:
+supply crates, offline earnings, milestones, prestige/tutorial/buy-max/number
+formatting, and runner/brute/boss types. P6 remains the final 15-minute balance
+and screenshot pass. See `HOLD-DESIGN.md` §10.
 
 ### Completed v1 slice
 
@@ -152,7 +161,7 @@ the rest. Settings.music flows into `music.setVolume` automatically.
 | 1.7 | `ZS.Command` — selection, control groups, orders, overlay | ✅ | `js/battle/command.js` |
 | 1.8 | BATTLE view + skirmish entry + battle bar | ✅ | `js/app.js`, `js/ui/menu.js` |
 | 1.9 | Battle i18n keys (both tables) + font subset rebuild | ✅ | `js/i18n/*`, `fonts/` |
-| 1.10 | Playwright P1 verification (62 assertions) | ✅ | `test/sanguo-p1.js` |
+| 1.10 | Playwright P1 verification (63 assertions) | ✅ | `test/sanguo-p1.js` |
 | 1.11 | Regression suite for the three original pages | ✅ | `test/pages-regression.js` |
 | 1.12 | Bug sweep: 12 fixed, each one now an assertion | ✅ | see below |
 | 1.13 | Seed sweep — no battle may hang | ✅ | `test/sanguo-seed-sweep.js` |
@@ -806,4 +815,3 @@ was gating, and could not tell you so.
   that only the draw pass refreshed, so an order landing between frames missed.
   New suite `test/sanguo-campaign-ui.js` (25) covers the palette, the guide,
   the tooltip, both march gestures, panning, and the halo's turn state.
-

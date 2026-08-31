@@ -65,22 +65,25 @@ async function main() {
       timeout: 10000,
     });
 
-    const boot = await page.evaluate(
-      (scen) => ({
+    const boot = await page.evaluate((scen) => {
+      const hud0 = ZS.debug.scenario.hud(ZS.Sim.agents, ZS.Sim.wave);
+      const hud1 = ZS.debug.scenario.hud(ZS.Sim.agents, ZS.Sim.wave);
+      return {
         scen: ZS.debug.scenario.constructor.name,
         agents: ZS.Sim.agents.length,
         worldW: ZS.debug.world.w,
         worldH: ZS.debug.world.h,
         zoom: ZS.debug.cam.zoom > 0,
         autoStarted: !!ZS.engine && ZS.engine.running,
+        hudStable: hud0 === hud1 && hud0.legend === hud1.legend && hud0.overlay === hud1.overlay,
         expected: scen,
-      }),
-      p.scen,
-    );
+      };
+    }, p.scen);
     ok("auto-starts without ZS_MANUAL_BOOT", boot.autoStarted);
     ok("runs " + p.scen, boot.scen === p.scen, boot.scen);
     ok("populated (" + boot.agents + " agents)", boot.agents >= p.minAgents, boot);
     ok("world built and camera fitted", boot.worldW > 0 && boot.worldH > 0 && boot.zoom, boot);
+    ok("reuses its per-frame HUD record and callbacks", boot.hudStable, boot);
 
     /* Issue 14: a file that fails to parse is skipped silently, so assert
        every module this page loads actually landed on ZS. */

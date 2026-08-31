@@ -18,12 +18,12 @@ someone could reasonably trip over.
 | # | Status | Area | Summary |
 |---|---|---|---|
 | [1](#1) | ~~RESOLVED~~ | tooling | ~~`.verify/` is gitignored, so no test suite is committed~~ — suites moved to `test/`, `npm test` |
-| [2](#2) | OPEN | tooling | Nothing *forces* the font-subset check to run (the stale-harvest half is fixed) |
+| [2](#2) | ~~RESOLVED~~ | tooling | GitHub verification now forces the font-subset check on every push and pull request |
 | [3](#3) | ~~RESOLVED~~ | battle | Reference and seeded battles resolve inside the design pacing window |
 | [4](#4) | ~~RESOLVED~~ | battle | Five open biomes, three town plans and three fort plans ship |
 | [7](#7) | ~~RESOLVED~~ | structure | Deterministic duels live in `js/battle/duel.js` |
 | [8](#8) | ~~RESOLVED~~ | tooling | ~~`oxfmt js/` rewrites line endings across every core file~~ — `.gitattributes` pins LF |
-| [9](#9) | NIT | render | `scenario.hud()` allocates per frame |
+| [9](#9) | ~~RESOLVED~~ | render | Every scenario now reuses its HUD, callback, parameter and overlay records |
 | [10](#10) | ~~RESOLVED~~ | campaign | Auto-resolve, occupation and long-campaign convergence have committed guards |
 | [11](#11) | ~~RESOLVED~~ | campaign | All 200 officers have mutable records and dated free-pool release |
 | [12](#12) | ~~RESOLVED~~ | campaign | Tales, Rest and a pluggable capital-mandate victory ship; diplomacy remains v2 |
@@ -44,16 +44,17 @@ went back to being what `AGENTS.md` describes — one-off diff scripts, fps
 probes and screenshot output, all still ignored.
 
 ```
-test/sanguo-p0.js             45 assertions
-test/sanguo-p1.js             62 assertions
+test/sanguo-p0.js             48 assertions
+test/sanguo-p1.js             63 assertions
 test/sanguo-p3.js            131 assertions
-test/pages-regression.js      29 assertions — guards the other three pages
+test/pages-regression.js      32 assertions — guards the other three pages
+test/hold-p4.js               22 assertions — guards the Hold through dawn
 test/sanguo-seed-sweep.js     16-seed no-hang sweep (slow; not in npm test)
 test/campaign-sweep.js        campaign pacing probe for issue 10
 test/sanguo-*-shot.js         screenshot helpers; PNGs still land in .verify/
 ```
 
-`npm test` runs `oxlint`, then the four assertion suites plus
+`npm test` runs `oxlint`, then every phase/regression suite plus
 `tools/check-generals.js`. Each
 script resolves the repo root itself, so the move needed no edits inside them.
 
@@ -65,7 +66,14 @@ a one-liner if anyone wants one.
 
 ## 2
 
-**OPEN · tooling · nothing forces the subset check to run**
+**RESOLVED · tooling · CI forces the subset check to run**
+
+Resolved 2026-08-31. `.github/workflows/verify.yml` runs the complete
+`npm test` gate on every push and pull request (and on manual dispatch), so the
+font coverage check in `test/sanguo-p0.js` is no longer dependent on someone
+remembering to invoke it locally. The workflow installs the committed Node
+dependencies, Chromium, and the small Python font-tooling dependency before
+running the same command contributors run on their workstation.
 
 `fonts/lxgw-wenkai-tc.subset.woff2` is cut to exactly the characters the game
 can render. Add a string with a new Han character and that glyph falls back to
@@ -107,21 +115,20 @@ This half can no longer regress by omission: a new module is picked up when its
 `tools/module-manifest.js` instead (issue 14). The two checks close each
 other's blind spot.
 
-### What is still open
+### Enforcement (fixed)
 
-Nothing *forces* either to run. `npm test` runs `--check` (via
-`test/sanguo-p0.js`) and now lints first, so a single command covers it — but a
-commit that skips `npm test` still lands a wrong subset silently.
+`npm test` runs `--check` (via `test/sanguo-p0.js`) and lints first, so a single
+local command covers it. The committed GitHub workflow now runs that command
+automatically even when the local check was skipped.
 
 A rebuild is no longer expensive, which changes the arithmetic on this: the
 source face is committed at `assets/fonts/LXGWWenKaiTC-Regular.ttf`, so the
 fix for a failed check is one command with no download. This issue previously
 said the opposite, following `FONTS.md`, which was wrong; both are corrected.
 
-**Options:** a `.githooks/pre-commit` running `npm test` with `core.hooksPath`
-pointed at it, or CI. Both need one opt-in step from whoever clones, so neither
-is truly automatic — which is why this is left as the maintainer's call rather
-than done.
+CI was chosen over a repository-local pre-commit hook: clones require no
+`core.hooksPath` opt-in, and the remote result is visible on the exact pushed
+revision.
 
 Separately and not a bug: **whether a 15 MB `.ttf` belongs in the history** is
 worth deciding. It packs to 8.8 MB of a 15.0 MiB pack.
@@ -246,14 +253,15 @@ issue asked for.
 
 ## 9
 
-**NIT · render · `scenario.hud()` allocates per frame**
+**RESOLVED · render · `scenario.hud()` reuses its records**
 
-`js/draw.js` calls it every frame and `ScenarioSanguo.hud()` builds a fresh
-object with two closures each time. `AGENTS.md` constraint 5 bans per-frame
-allocation in hot loops; this is once per frame rather than once per agent, and
-the zombie, cannae and hold packs all do the same, so it is consistent with the
-codebase rather than a new sin. Worth hoisting into a reused record if the HUD
-grows.
+Resolved 2026-08-31 while finishing the Hold's P4 night. `js/draw.js` calls
+`scenario.hud()` every frame, so all four packs now keep one HUD record and
+stable legend/overlay callbacks, updating only their dynamic strings and
+numbers. End overlays, dawn-card wrappers and Sanguo's i18n parameter objects
+are reused too; the zombie HUD also fills a reusable counts record. The P1 and
+pages regressions call all four packs twice and assert identity for the HUD and
+both callbacks, so a literal-with-closures cannot quietly return here.
 
 ---
 

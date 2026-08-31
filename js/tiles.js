@@ -49,8 +49,11 @@
       return true;
     }
 
-    // dig a straight stroke from (x0,y0) to (x1,y1); returns tiles changed
-    stroke(x0, y0, x1, y1, type) {
+    // Paint a straight stroke from (x0,y0) to (x1,y1); returns tiles changed.
+    // `limit` and `canSet` are optional scenario rules (the Hold uses them to
+    // enforce its dig purse and to keep terrain out from under buildings).
+    stroke(x0, y0, x1, y1, type, limit = Infinity, canSet = null) {
+      if (limit <= 0) return 0;
       let n = 0;
       let [tx, ty] = this.tileAt(x0, y0);
       const [ex, ey] = this.tileAt(x1, y1);
@@ -60,7 +63,10 @@
         sy = ty < ey ? 1 : -1;
       let err = dx - dy;
       for (let guard = 0; guard < this.cols + this.rows + 2; guard++) {
-        if (this.set(tx, ty, type)) n++;
+        if ((!canSet || canSet(tx, ty)) && this.set(tx, ty, type)) {
+          n++;
+          if (n >= limit) break;
+        }
         if (tx === ex && ty === ey) break;
         const e2 = 2 * err;
         if (e2 > -dy) {

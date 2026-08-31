@@ -2295,7 +2295,7 @@
       return n;
     }
 
-    counts(agents) {
+    counts(agents, out) {
       let surv = 0,
         zomb = 0,
         shel = 0,
@@ -2311,7 +2311,13 @@
           }
         } else zomb++;
       }
-      return { surv, zomb, shel, guard, turret };
+      const counts = out || {};
+      counts.surv = surv;
+      counts.zomb = zomb;
+      counts.shel = shel;
+      counts.guard = guard;
+      counts.turret = turret;
+      return counts;
     }
 
     // what the auto-camera should be watching (CONTRACT B): the focal point
@@ -2419,56 +2425,60 @@
     /* ---------- presentation ---------- */
 
     hud(agents, wave) {
-      const self = this;
-      const { surv, zomb, shel, guard, turret } = this.counts(agents);
-      return {
-        title: "outbreak, wave " + wave,
-        stats:
-          "alive " +
-          surv +
-          "   turned " +
-          zomb +
-          "   sheltered " +
-          shel +
-          "   guards " +
-          guard +
-          (turret ? "   turrets " + turret : ""),
-        hint: "drag to pan · wheel to zoom · tap to call a strike",
-        legend(c, y, fs, vw, vh) {
-          c.strokeStyle = "rgba(60,58,50,0.7)";
-          c.lineWidth = 1.2;
-          ZS.wcirc(c, 14, y, 3.5, 5, 0.6);
-          ZS.wline(c, 14, y + 3, 14, y + 9, 6, 0.5);
-          c.strokeStyle = "rgb(72,102,58)";
-          ZS.wcirc(c, 14, y + fs * 1.35, 3.5, 7, 0.6);
-          ZS.wline(c, 14, y + fs * 1.35 + 3, 14, y + fs * 1.35 + 9, 8, 0.5);
-          ZS.wline(c, 14, y + fs * 1.35 + 3, 20, y + fs * 1.35, 9, 0.5);
-          c.strokeStyle = "rgba(46,44,40,0.9)";
-          const ly = y + fs * 2.7;
-          ZS.wcirc(c, 14, ly, 3.5, 10, 0.6);
-          ZS.wline(c, 14, ly + 3, 14, ly + 9, 11, 0.5);
-          ZS.wline(c, 10.5, ly - 4.6, 17.5, ly - 4.6, 12, 0.5); // hat brim
-          ZS.wline(c, 17, ly + 5, 23, ly + 4, 13, 0.5); // rifle
-          self._threatArrow(c, vw, vh);
-        },
-        overlay() {
-          if (self.fell && self.lastSurv === 0) {
-            const f = self.fall || { lost: 0, doors: 0, dir: "the hills" };
-            return {
-              card: {
-                lost: true,
-                title: "night " + wave + " — the town has fallen",
-                lines: [
-                  f.lost + " lost to the horde",
-                  f.doors + " doors held",
-                  "the horde swells from " + f.dir,
-                ],
-              },
-            };
-          }
-          return null;
-        },
-      };
+      if (!this._hud) {
+        const self = this;
+        const card = { lost: true, title: "", lines: ["", "", ""] };
+        const overlay = { card };
+        this._hudCounts = {};
+        this._hudWave = wave;
+        this._hud = {
+          title: "",
+          stats: "",
+          hint: "drag to pan · wheel to zoom · tap to call a strike",
+          legend(c, y, fs, vw, vh) {
+            c.strokeStyle = "rgba(60,58,50,0.7)";
+            c.lineWidth = 1.2;
+            ZS.wcirc(c, 14, y, 3.5, 5, 0.6);
+            ZS.wline(c, 14, y + 3, 14, y + 9, 6, 0.5);
+            c.strokeStyle = "rgb(72,102,58)";
+            ZS.wcirc(c, 14, y + fs * 1.35, 3.5, 7, 0.6);
+            ZS.wline(c, 14, y + fs * 1.35 + 3, 14, y + fs * 1.35 + 9, 8, 0.5);
+            ZS.wline(c, 14, y + fs * 1.35 + 3, 20, y + fs * 1.35, 9, 0.5);
+            c.strokeStyle = "rgba(46,44,40,0.9)";
+            const ly = y + fs * 2.7;
+            ZS.wcirc(c, 14, ly, 3.5, 10, 0.6);
+            ZS.wline(c, 14, ly + 3, 14, ly + 9, 11, 0.5);
+            ZS.wline(c, 10.5, ly - 4.6, 17.5, ly - 4.6, 12, 0.5); // hat brim
+            ZS.wline(c, 17, ly + 5, 23, ly + 4, 13, 0.5); // rifle
+            self._threatArrow(c, vw, vh);
+          },
+          overlay() {
+            if (self.fell && self.lastSurv === 0) {
+              const f = self.fall;
+              card.title = "night " + self._hudWave + " — the town has fallen";
+              card.lines[0] = (f ? f.lost : 0) + " lost to the horde";
+              card.lines[1] = (f ? f.doors : 0) + " doors held";
+              card.lines[2] = "the horde swells from " + (f ? f.dir : "the hills");
+              return overlay;
+            }
+            return null;
+          },
+        };
+      }
+      const { surv, zomb, shel, guard, turret } = this.counts(agents, this._hudCounts);
+      this._hudWave = wave;
+      this._hud.title = "outbreak, wave " + wave;
+      this._hud.stats =
+        "alive " +
+        surv +
+        "   turned " +
+        zomb +
+        "   sheltered " +
+        shel +
+        "   guards " +
+        guard +
+        (turret ? "   turrets " + turret : "");
+      return this._hud;
     }
 
     // the threat arrow: a sketched pointer at the screen edge while the

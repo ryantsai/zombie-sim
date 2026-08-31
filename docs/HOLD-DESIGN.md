@@ -346,8 +346,11 @@ scenario packs.
    training, morale, reinforced), save v2. Zombies now eat soldiers.
    Verified: 15/15 Playwright checks (training, ring geometry, combat
    both directions, upgrades, reinforced HP, save v2 round-trip).
-4. **P4 — the night**: wave spawner, dusk/dawn, results card, kill rewards,
-   soft-fail. Verify: scripted night 1 through dawn, numbers match BAL.
+4. **P4 — the night (shipped)**: complete deterministic wave plans, grass-edge
+   spawning with closed-edge redistribution, dusk/night/dawn, click combat,
+   weather, kill rewards + early-clear bonus, results card and soft-fail.
+   Verified: 22/22 committed Playwright checks in `test/hold-p4.js`, including
+   an accelerated scripted night 1 through its persisted dawn.
 5. **P5 — the rest of the checklist**: supply crate, offline earnings,
    milestones, prestige, tutorial, buy-max, number formatting,
    runner/brute/boss types.

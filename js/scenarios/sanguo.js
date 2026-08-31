@@ -2701,36 +2701,62 @@
     /* ---------- presentation ---------- */
 
     hud(_agents, _wave) {
-      const t = ZS.i18n ? (k, p) => ZS.i18n.t(k, p) : (k) => k;
+      if (!this._hud) {
+        const stats = { own: 0, ownLost: 0, foe: 0, foeLost: 0, time: "" };
+        const selected = { n: 0 };
+        const result = { dead: 0, fled: 0 };
+        const overlay = { main: "", sub: "" };
+        this._hudParams = { stats, selected, result };
+        this._hud = {
+          title: "",
+          stats: "",
+          hint: "",
+          legend: (cc, y, fs) => this._legend(cc, y, fs),
+          overlay: () => {
+            if (!this.over) return null;
+            const draw = this.result < 0;
+            const win = this.result === 0;
+            const lost = this.sides[win ? 1 : 0];
+            result.dead = lost.dead;
+            result.fled = lost.routed + lost.gone;
+            overlay.main = ZS.i18n
+              ? ZS.i18n.t(draw ? "battle.draw" : win ? "battle.win" : "battle.lose")
+              : draw
+                ? "battle.draw"
+                : win
+                  ? "battle.win"
+                  : "battle.lose";
+            overlay.sub = this.stalemate
+              ? ZS.i18n
+                ? ZS.i18n.t("battle.stalemate")
+                : "battle.stalemate"
+              : ZS.i18n
+                ? ZS.i18n.t("battle.result", result)
+                : "battle.result";
+            return overlay;
+          },
+        };
+      }
       const s0 = this.sides[0],
         s1 = this.sides[1];
       const mm = ((this.bt / 60) | 0).toString().padStart(2, "0");
       const ss = ((this.bt % 60) | 0).toString().padStart(2, "0");
       const sel = ZS.Command ? ZS.Command.selection.length : 0;
-      return {
-        title: t("battle.title"),
-        stats: t("battle.stats", {
-          own: s0.alive,
-          ownLost: s0.dead,
-          foe: s1.alive,
-          foeLost: s1.dead,
-          time: mm + ":" + ss,
-        }),
-        hint: sel ? t("battle.hint.selected", { n: sel }) : t("battle.hint"),
-        legend: (cc, y, fs) => this._legend(cc, y, fs),
-        overlay: () => {
-          if (!this.over) return null;
-          const draw = this.result < 0;
-          const win = this.result === 0;
-          const lost = this.sides[win ? 1 : 0];
-          return {
-            main: t(draw ? "battle.draw" : win ? "battle.win" : "battle.lose"),
-            sub: this.stalemate
-              ? t("battle.stalemate")
-              : t("battle.result", { dead: lost.dead, fled: lost.routed + lost.gone }),
-          };
-        },
-      };
+      const p = this._hudParams;
+      p.stats.own = s0.alive;
+      p.stats.ownLost = s0.dead;
+      p.stats.foe = s1.alive;
+      p.stats.foeLost = s1.dead;
+      p.stats.time = mm + ":" + ss;
+      p.selected.n = sel;
+      this._hud.title = ZS.i18n ? ZS.i18n.t("battle.title") : "battle.title";
+      this._hud.stats = ZS.i18n ? ZS.i18n.t("battle.stats", p.stats) : "battle.stats";
+      this._hud.hint = ZS.i18n
+        ? ZS.i18n.t(sel ? "battle.hint.selected" : "battle.hint", sel ? p.selected : undefined)
+        : sel
+          ? "battle.hint.selected"
+          : "battle.hint";
+      return this._hud;
     }
 
     _legend(c, y, fs) {

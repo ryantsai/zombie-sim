@@ -9,7 +9,7 @@
    1.5s; dig +5/day, cap 50); test zombies that chew through whatever
    stands nearest (broken blocks become rubble, cleared by dig 4);
    autosave to localStorage (10s, on changes, on unload).
-   P3 (this build): the soldier ring — barracks train soldiers onto slots
+   P3: the soldier ring — barracks train soldiers onto slots
    on a 3-tile ring around the core (cap 12 + 8/barracks); they engage
    zombies in range (club/machete/pistol), fall back wounded (morale),
    zombies now eat soldiers; the larder — farms grow food, the ring eats
@@ -17,8 +17,9 @@
    (gloves x2 click, weapon tiers, armor 40/70/120, training +15% dmg,
    morale, reinforced block HP) bought with scrap, costs scale with the
    day; save v2 carries the larder, upgrades, and the surviving ring.
-   P4 swaps the 3s night for the real 90s wave night + the dawn results
-   card; P5 adds crates, offline progress, prestige, milestones. */
+   P4 (this build): the real 90s wave night, deterministic spread/surges,
+   click combat, weather, edge spawns, kill rewards, soft-fail, and the dawn
+   results card. P5 adds crates, offline progress, prestige, milestones. */
 (() => {
   "use strict";
   const ZS = (window.ZS = window.ZS || {});
@@ -97,6 +98,7 @@
     { name: "STENCH", desc: "zombie speed +10%", spd: 1.1 },
     { name: "CALM", desc: "kill reward +10%", kill: 1.1 },
   ];
+  const SURGE_NAMES = ["second", "third", "final"];
   const TURRET = { dmg: 22, rate: 1, range: T.TILE * 3.5 }; // design §3.2
 
   const ST = { SOLDIER: 1, ZOMBIE: 2 };
@@ -185,21 +187,27 @@
       this.nav = nav;
       const tiles = (this.tiles = new T(world, nav));
       const s = this.saved;
+      this.day = (s && s.day) || 1;
+      this.scrap = s ? s.scrap : BAL.SCRAP0;
+      this.dig = s ? s.dig : BAL.DIG0;
+      this.food = s && typeof s.food === "number" ? s.food : BAL.FOOD0;
+      if (s && s.up) Object.assign(this.up, s.up);
       if (s && s.tiles) for (const [tx, ty, tv] of s.tiles) tiles.set(tx, ty, tv);
       const blocks = (this.blocks = new ZS.Blocks(world, nav, tiles));
       world.blocks = blocks; // draw.js y-sorts world.blocks with the agents
       blocks.placeCore();
       if (s && s.blocks)
         for (const [tx, ty, kind, hp] of s.blocks) {
-          const r = blocks.place(tx, ty, kind);
-          if (r.ok && hp !== undefined) r.b.hp = hp;
+          const r = blocks.place(tx, ty, kind, REINF[this.up.reinforced]);
+          if (r.ok && hp !== undefined) {
+            r.b.hp = Math.min(r.b.maxHp, hp);
+            blocks.damage(r.b, 0); // restore the matching crack tier
+          }
         }
-      this.day = (s && s.day) || 1;
-      this.scrap = s ? s.scrap : BAL.SCRAP0;
-      this.dig = s ? s.dig : BAL.DIG0;
-      this.food = s && typeof s.food === "number" ? s.food : BAL.FOOD0;
-      if (s && s.up) Object.assign(this.up, s.up);
-      if (s && s.coreHp && blocks.core) blocks.core.hp = s.coreHp;
+      if (s && s.coreHp && blocks.core) {
+        blocks.core.hp = Math.min(blocks.core.maxHp, s.coreHp);
+        blocks.damage(blocks.core, 0);
+      }
       // the ring: surviving soldiers rejoin their slots (spawned in init,
       // once the sim's agent list exists)
       this._restored = s && s.soldiers ? s.soldiers : null;
@@ -299,7 +307,7 @@
           this._spawnWalker();
           if (s.surge !== null && !this._n.surged[s.surge]) {
             this._n.surged[s.surge] = true;
-            this.toast("they're coming — " + (s.surge === 1 ? "second" : "third") + " wave!");
+            this.toast("they're coming — " + (SURGE_NAMES[s.surge] || "another") + " wave!");
           }
         }
         if (!this.blocks.core) return this._endNight(false, true); // the core fell
@@ -809,9 +817,14 @@
     // dig one tile (from = null) or one stroke segment; returns tiles changed
     digTo(x, y, from) {
       if (typeof this.tool !== "number" || !this.tiles || this.dig < BAL.DIG_COST) return 0;
+      const limit = Math.floor(this.dig / BAL.DIG_COST);
+      const canSet = (tx, ty) => !this.blocks || !this.blocks.at(tx, ty);
       const n = from
-        ? this.tiles.stroke(from.x, from.y, x, y, this.tool)
-        : this.tiles.set(Math.floor(x / T.TILE), Math.floor(y / T.TILE), this.tool);
+        ? this.tiles.stroke(from.x, from.y, x, y, this.tool, limit, canSet)
+        : canSet(Math.floor(x / T.TILE), Math.floor(y / T.TILE)) &&
+            this.tiles.set(Math.floor(x / T.TILE), Math.floor(y / T.TILE), this.tool)
+          ? 1
+          : 0;
       if (n > 0) this.dig = Math.max(0, this.dig - n * BAL.DIG_COST);
       return n;
     }
@@ -839,6 +852,10 @@
     }
 
     _buyUp(k) {
+      if (this.phase !== "day") {
+        this.toast("upgrades wait for daylight");
+        return;
+      }
       const u = UPG[k];
       if (this.up[k] >= u.max) return;
       const cost = this._upCost(k);
@@ -855,6 +872,15 @@
           const gain = nh - a.maxHp;
           a.maxHp = nh;
           a.hp = Math.min(nh, a.hp + Math.max(0, gain));
+        }
+      } else if (k === "reinforced") {
+        for (const b of this.blocks.list) {
+          if (b.kind === "core") continue;
+          const maxHp = Math.round(ZS.Blocks.CAT[b.kind].hp * REINF[this.up.reinforced]);
+          const gain = maxHp - b.maxHp;
+          b.maxHp = maxHp;
+          b.hp = Math.min(maxHp, b.hp + Math.max(0, gain));
+          this.blocks.damage(b, 0);
         }
       }
       this.toast(u.name + " → level " + this.up[k]);
@@ -880,8 +906,8 @@
       }
     }
 
-    _digMax() {
-      return Math.min(BAL.DIG_CAP, BAL.DIG0 + (this.day - 1) * BAL.DIG_GROW);
+    _digMax(day = this.day) {
+      return Math.min(BAL.DIG_CAP, BAL.DIG0 + (day - 1) * BAL.DIG_GROW);
     }
 
     toast(txt) {
@@ -903,16 +929,19 @@
     // never has to remember a schedule mid-flight)
     _planNight() {
       const day = this.day;
-      const total = Math.round(10 + day * 4 + Math.pow(day, 1.4));
+      const total = 10 + day * 4 + Math.floor(Math.pow(day, 1.4));
       const spread = Math.round(total * 0.65);
       const surges = 2 + (H(day * 3.3) < 0.5 ? 0 : 1);
-      const surgeN = Math.max(1, Math.floor((total - spread) / surges));
+      const surgeTotal = total - spread;
+      const surgeN = Math.floor(surgeTotal / surges);
+      const surgeExtra = surgeTotal % surges;
       const q = [];
       for (let i = 0; i < spread; i++)
         q.push({ t: ((i + 0.5) / spread) * BAL.NIGHT_LEN, surge: null });
       for (let s = 0; s < surges; s++) {
         const t0 = (0.2 + 0.55 * H(day * 7.1 + s * 2.3)) * BAL.NIGHT_LEN;
-        for (let i = 0; i < surgeN; i++) q.push({ t: t0 + i * 0.2, surge: s });
+        const count = surgeN + (s < surgeExtra ? 1 : 0);
+        for (let i = 0; i < count; i++) q.push({ t: t0 + i * 0.2, surge: s });
       }
       q.sort((a, b) => a.t - b.t);
       this._sq = q;
@@ -935,23 +964,48 @@
       ZS.Sim.agents.push(z);
     }
 
-    // walkers come from the map edge: a walkable spot 300–540px out from the
-    // core, rejection-sampled (a full moat keeps them at the water's edge)
+    // Walkers enter on grass at the world edge. Random probes distribute the
+    // quota between open sides; the perimeter scan guarantees that one closed
+    // edge cannot swallow spawns. If the entire rim has been converted, scan
+    // inward until the nearest valid grass ring is found.
     _spawnPoint() {
-      const c = this.blocks.core,
-        w = this.tiles.cols * T.TILE,
-        h = this.tiles.rows * T.TILE;
-      const cx = c ? (c.x0 + c.x1) / 2 : w / 2,
-        cy = c ? (c.y0 + c.by) / 2 : h / 2;
-      for (let i = 0; i < 40; i++) {
-        const an = ZS.rnd(0, 6.283),
-          r = ZS.rnd(300, 540);
-        const x = cx + Math.cos(an) * r,
-          y = cy + Math.sin(an) * r;
-        if (x < 40 || y < 40 || x > w - 40 || y > h - 40) continue;
-        if (this.nav.isWalkable(x, y, true)) return { x, y };
+      const cols = this.tiles.cols,
+        rows = this.tiles.rows;
+      const point = (tx, ty) => {
+        if (!this.tiles.inGrid(tx, ty) || this.tiles.typeAt(tx, ty) !== T.GRASS) return null;
+        const x = (tx + 0.5) * T.TILE,
+          y = (ty + 0.5) * T.TILE;
+        return this.nav.isWalkable(x, y, true) ? { x, y } : null;
+      };
+      for (let i = 0; i < 80; i++) {
+        const side = Math.floor(ZS.rnd(0, 4));
+        const tx = side === 0 ? 0 : side === 1 ? cols - 1 : Math.floor(ZS.rnd(0, cols));
+        const ty = side === 2 ? 0 : side === 3 ? rows - 1 : Math.floor(ZS.rnd(0, rows));
+        const p = point(tx, ty);
+        if (p) return p;
       }
-      return { x: cx + 320, y: cy + 320 };
+      const rings = Math.ceil(Math.min(cols, rows) / 2);
+      for (let inset = 0; inset < rings; inset++) {
+        const x0 = inset,
+          x1 = cols - 1 - inset,
+          y0 = inset,
+          y1 = rows - 1 - inset;
+        for (let tx = x0; tx <= x1; tx++) {
+          const top = point(tx, y0);
+          if (top) return top;
+          const bottom = y1 === y0 ? null : point(tx, y1);
+          if (bottom) return bottom;
+        }
+        for (let ty = y0 + 1; ty < y1; ty++) {
+          const left = point(x0, ty);
+          if (left) return left;
+          const right = x1 === x0 ? null : point(x1, ty);
+          if (right) return right;
+        }
+      }
+      // A fully repainted/occupied map still must not deadlock the wave.
+      const fallback = this.nav.nearestWalkable(20, 20, Math.max(cols, rows) * T.TILE, true);
+      return fallback || { x: 20, y: 20 };
     }
 
     // the night is over: a card at dawn. lost = the core fell (soft-fail,
@@ -1041,7 +1095,8 @@
 
     _zspd() {
       const m = this._nightMod(this.day);
-      return BAL.Z_SPD * (m && m.spd ? m.spd : 1);
+      const nightScale = Math.min(1.3, 1 + this.day * 0.01);
+      return BAL.Z_SPD * nightScale * (m && m.spd ? m.spd : 1);
     }
 
     _srate(w) {
@@ -1063,6 +1118,12 @@
       if (this._wiped || !this.tiles || !this.blocks) return;
       const t = this.tiles,
         b = this.blocks;
+      // The result card intentionally holds `this.day` on the night just
+      // fought, but persistence must already point at tomorrow. Otherwise a
+      // reload keeps the rewards and lets the same night run again.
+      const settled = this.phase === "dawn" && !!this.card;
+      const savedDay = this.day + (settled ? 1 : 0);
+      const savedDig = settled ? this._digMax(savedDay) : Math.max(0, Math.ceil(this.dig));
       const tiles = [];
       for (let ty = 0; ty < t.rows; ty++)
         for (let tx = 0; tx < t.cols; tx++) {
@@ -1076,8 +1137,8 @@
           SAVE_KEY,
           JSON.stringify({
             v: 2,
-            day: this.day,
-            dig: Math.max(0, Math.ceil(this.dig)),
+            day: savedDay,
+            dig: savedDig,
             scrap: Math.floor(this.scrap),
             food: Math.floor(this.food),
             coreHp: b.core ? b.core.hp : 0,
@@ -1318,7 +1379,7 @@
       o.dead = true;
       this.fx.push({ t: 20, x: o.x, y: o.y, kind: "x" });
       const m = this._nightMod(this.day);
-      const reward = Math.round(BAL.KILL * (m && m.kill ? m.kill : 1));
+      const reward = Math.round((BAL.KILL + this.day * 0.15) * (m && m.kill ? m.kill : 1));
       this.scrap += reward;
       this.fx.push({ t: 1.2, x: o.x, y: o.y - 16, kind: "gain", txt: "+" + reward });
       if (this.phase === "night" && this._n) {
@@ -1554,6 +1615,10 @@
       };
       this._el.pile.addEventListener("mousedown", (e) => {
         e.preventDefault();
+        if (this.phase !== "day") {
+          this.toast("the scrap pile waits for daylight");
+          return;
+        }
         this.scrap += BAL.CLICK * Math.pow(2, this.up.gloves);
         this._pulse();
       });
@@ -1623,7 +1688,8 @@
               : k === "barracks" && cnt > 0
                 ? "cap " + this.soldierCap() + " · " + this._soldiers().length
                 : "";
-        row.className = "row" + (un ? " lock" : "") + (this.tool === k ? " on" : "");
+        row.className =
+          "row" + (un || this.phase !== "day" ? " lock" : "") + (this.tool === k ? " on" : "");
       }
       for (const tt of DIG_TOOLS)
         this._drows[tt].className = "row" + (this.tool === tt ? " on" : "");
@@ -1636,7 +1702,7 @@
         const costEl = row.querySelector(".cost");
         costEl.textContent = maxed ? "" : String(cost);
         costEl.className = "cost" + (!maxed && this.scrap < cost ? " no" : "");
-        row.className = "row" + (maxed ? " lock" : "");
+        row.className = "row" + (maxed || this.phase !== "day" ? " lock" : "");
       }
       el.toast.textContent = this.toastT > 0 ? this.toastTxt : "";
     }
@@ -1661,32 +1727,44 @@
     hud(_agents, _wave) {
       // the stats live in the DOM panel (top-left) — the canvas keeps only
       // the bottom hint and the phase overlays
-      const mod = this.phase !== "day" ? this._nightMod(this.day) : null;
-      return {
-        hidden: true,
-        hint:
-          this.phase !== "day"
-            ? "LMB: hit the walkers (fast clicks combo) · drag: pan · wheel: zoom"
-            : "b g y v f t w: build · 1-4: dig · 0/esc: pan · LMB dig/place · RMB dismantle",
-        overlay: () => {
-          if (this.card) return { card: this.card };
-          if (this.phase === "dusk")
-            return {
-              main: "NIGHT " + this.day,
-              sub: mod ? mod.name + " — " + mod.desc : "darkness falls…",
-              big: true,
-            };
-          if (this.phase === "night" && this.nightT < 4)
-            return {
-              main: "NIGHT " + this.day,
-              sub: mod ? mod.name : "",
-              fade: 1 - this.nightT / 4,
-            };
-          if (this.phase === "dawn")
-            return { main: "dawn", sub: "day " + (this.day + 1) + " — dig refreshed" };
-          return null;
-        },
-      };
+      if (!this._hud) {
+        const card = { card: null };
+        const dusk = { main: "", sub: "", big: true };
+        const night = { main: "", sub: "", fade: 1 };
+        const dawn = { main: "dawn", sub: "" };
+        this._hud = {
+          hidden: true,
+          hint: "",
+          overlay: () => {
+            const mod = this.phase !== "day" ? this._nightMod(this.day) : null;
+            if (this.card) {
+              card.card = this.card;
+              return card;
+            }
+            if (this.phase === "dusk") {
+              dusk.main = "NIGHT " + this.day;
+              dusk.sub = mod ? mod.name + " — " + mod.desc : "darkness falls…";
+              return dusk;
+            }
+            if (this.phase === "night" && this.nightT < 4) {
+              night.main = "NIGHT " + this.day;
+              night.sub = mod ? mod.name : "";
+              night.fade = 1 - this.nightT / 4;
+              return night;
+            }
+            if (this.phase === "dawn") {
+              dawn.sub = "day " + (this.day + 1) + " — dig refreshed";
+              return dawn;
+            }
+            return null;
+          },
+        };
+      }
+      this._hud.hint =
+        this.phase !== "day"
+          ? "LMB: hit the walkers (fast clicks combo) · drag: pan · wheel: zoom"
+          : "b g y v f t w: build · 1-4: dig · 0/esc: pan · LMB dig/place · RMB dismantle";
+      return this._hud;
     }
   }
 

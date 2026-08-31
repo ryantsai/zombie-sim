@@ -294,9 +294,10 @@ by the other three pages:
   block move), `js/battle/formation.js` (formations as data),
   `js/battle/command.js` (selection, control groups, orders)
 
-Verify: `npm test` — `test/sanguo-p0.js` (48), `test/sanguo-p1.js` (62),
+Verify: `npm test` — `test/sanguo-p0.js` (48), `test/sanguo-p1.js` (63),
 `test/sanguo-p3.js` (131), the P4-P7 suites, `test/sanguo-campaign-ui.js` (25),
-`test/pages-regression.js` (29) and `tools/check-generals.js` (200). The
+`test/pages-regression.js` (32), `test/hold-p4.js` (22), and
+`tools/check-generals.js` (200). The
 campaign UI suite guards the map *as an interface* — the warlord palette stays
 separable (much more so where two of them share a border on the sheet), the
 guide line and the tooltip track what is selected, and click-to-march and
@@ -332,19 +333,19 @@ rebuild instructions in `docs/FONTS.md`). It is committed twice: as a
 `js/fonts/subset-data.js`, because a CORS-mode font fetch from a `file://`
 opaque origin is refused and constraint 1 says the page must stay
 double-clickable. **Re-run `python tools/subset-font.py --check` after adding
-text to `js/i18n/*.js` or `js/campaign/data/*.js`** — new glyphs fall back
-silently otherwise.
+text anywhere `index.html` loads** — new glyphs fall back silently otherwise.
 
 ## Hold pack (`js/scenarios/hold.js`, design in `docs/HOLD-DESIGN.md`)
 
 A sketch-style zombie clicker: one ring of soldiers on a 1600×1200 tile
-world (40×30 of 40px tiles), day/economy → night/horde loop. Build is in
-progress per docs/HOLD-DESIGN.md — P1 (tiles + dig) is done: drag the ground to
-dig water/sand/road (5 dig per tile, 20 per day, keys 1–4); water is a hard
-block in the nav grid so a dug moat holds. Still to come: blocks/economy/
-save (P2), the soldier ring + upgrades (P3), night waves + the dawn report
-(P4), clicker furniture (P5), balance (P6). `ZS.Tiles` (`js/tiles.js`)
-owns the grid, nav marking, and render; the scenario owns the rules.
+world (40×30 of 40px tiles), day/economy → night/horde loop. P1–P4 are done:
+bounded terrain digging and hard-blocking moats; blocks/economy/save; the
+soldier ring, larder and upgrades; and the real deterministic 90-second wave
+night with edge spawns, click combat, weather, dawn results and soft-fail.
+`test/hold-p4.js` guards the complete slice. Still to come per
+`docs/HOLD-DESIGN.md`: clicker furniture and enemy types (P5), then balance
+(P6). `ZS.Tiles` (`js/tiles.js`) owns the grid, nav marking, and render; the
+scenario owns the rules.
 
 Engine hooks the Hold needed (all opt-in, no-ops for the other pages):
 `ZS_WW`/`ZS_WH` page sizing in `main.js`, the `terrain`/`drawGround`/

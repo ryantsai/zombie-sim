@@ -1340,96 +1340,99 @@
     /* ---------- presentation ---------- */
 
     hud(agents, wave) {
-      const { bt } = this.counts(agents);
       const s0 = this.sides[ROME];
       const s1 = this.sides[CAR];
-      const mm = ((bt / 60) | 0).toString().padStart(2, "0");
-      const ss = ((bt % 60) | 0).toString().padStart(2, "0");
-      return {
-        title: "cannae, 216 bc · engagement " + wave,
-        stats:
-          "rome " +
-          s0.dead +
-          "d " +
-          s0.gone +
-          "f · carthage " +
-          s1.dead +
-          "d " +
-          s1.gone +
-          "f · " +
-          mm +
-          ":" +
-          ss,
-        hint: "drag to pan · wheel to zoom · tap to rally the nearest line",
-        legend(c, y, fs) {
-          c.lineCap = "round";
-          c.lineWidth = 1.2;
-          c.strokeStyle = "rgba(60,58,50,0.75)";
-          // roman: red scutum
-          ZS.wcirc(c, 16, y, 3.2, 5, 0.5);
-          ZS.wline(c, 16, y + 3, 16, y + 9, 6, 0.4);
-          ZS.wline(c, 21, y - 2, 27, y + 3, 7, 0.4);
-          c.fillStyle = ROM_SHIELD;
-          ZS.wpoly(
-            c,
-            [
-              { x: 8, y: y + 1 },
-              { x: 12, y: y + 1 },
-              { x: 12, y: y + 9 },
-              { x: 8, y: y + 9 },
-            ],
-            8,
-            0.4,
-            true,
-          );
-          c.fill();
-          c.stroke();
-          // carthaginian: blue round shield
-          c.strokeStyle = "rgba(60,58,50,0.75)";
-          const y2 = y + fs * 1.35;
-          ZS.wcirc(c, 16, y2, 3.2, 9, 0.5);
-          ZS.wline(c, 16, y2 + 3, 16, y2 + 9, 10, 0.4);
-          c.fillStyle = CAR_SHIELD;
-          ZS.wcirc(c, 10, y2 + 5, 3.8, 11, 0.5);
-          c.fill();
-          c.stroke();
-          // horse
-          c.strokeStyle = "rgba(60,58,50,0.75)";
-          const y3 = y + fs * 2.7;
-          ZS.wpoly(
-            c,
-            [
-              { x: 7, y: y3 + 3 },
-              { x: 9, y: y3 },
-              { x: 19, y: y3 },
-              { x: 21, y: y3 + 3 },
-              { x: 9, y: y3 + 3.5 },
-            ],
-            12,
-            0.5,
-            true,
-          );
-          c.stroke();
-          ZS.wline(c, 20, y3, 23, y3 - 3, 13, 0.4);
-          ZS.wline(c, 9, y3 + 3, 9, y3 + 7, 14, 0.4);
-          ZS.wline(c, 19, y3 + 3, 19, y3 + 7, 15, 0.4);
-        },
-        overlay: () => {
-          if (!this.over) return null;
-          if (this.result === CAR) {
-            const sd = this.sides[ROME];
-            return {
-              main: "CARTHAGE — the field is won",
-              sub: "rome " + sd.dead + " dead · " + sd.gone + " fled · cannae, 216 bc",
-            };
-          }
-          const sd = this.sides[CAR];
-          return {
-            main: "ROME — the field is held",
-            sub: "carthage " + sd.dead + " dead · " + sd.gone + " fled · cannae, 216 bc",
-          };
-        },
-      };
+      const mm = ((this.bt / 60) | 0).toString().padStart(2, "0");
+      const ss = ((this.bt % 60) | 0).toString().padStart(2, "0");
+      if (!this._hud) {
+        const overlay = { main: "", sub: "" };
+        this._hud = {
+          title: "",
+          stats: "",
+          hint: "drag to pan · wheel to zoom · tap to rally the nearest line",
+          legend(c, y, fs) {
+            c.lineCap = "round";
+            c.lineWidth = 1.2;
+            c.strokeStyle = "rgba(60,58,50,0.75)";
+            // roman: red scutum
+            ZS.wcirc(c, 16, y, 3.2, 5, 0.5);
+            ZS.wline(c, 16, y + 3, 16, y + 9, 6, 0.4);
+            ZS.wline(c, 21, y - 2, 27, y + 3, 7, 0.4);
+            c.fillStyle = ROM_SHIELD;
+            ZS.wpoly(
+              c,
+              [
+                { x: 8, y: y + 1 },
+                { x: 12, y: y + 1 },
+                { x: 12, y: y + 9 },
+                { x: 8, y: y + 9 },
+              ],
+              8,
+              0.4,
+              true,
+            );
+            c.fill();
+            c.stroke();
+            // carthaginian: blue round shield
+            c.strokeStyle = "rgba(60,58,50,0.75)";
+            const y2 = y + fs * 1.35;
+            ZS.wcirc(c, 16, y2, 3.2, 9, 0.5);
+            ZS.wline(c, 16, y2 + 3, 16, y2 + 9, 10, 0.4);
+            c.fillStyle = CAR_SHIELD;
+            ZS.wcirc(c, 10, y2 + 5, 3.8, 11, 0.5);
+            c.fill();
+            c.stroke();
+            // horse
+            c.strokeStyle = "rgba(60,58,50,0.75)";
+            const y3 = y + fs * 2.7;
+            ZS.wpoly(
+              c,
+              [
+                { x: 7, y: y3 + 3 },
+                { x: 9, y: y3 },
+                { x: 19, y: y3 },
+                { x: 21, y: y3 + 3 },
+                { x: 9, y: y3 + 3.5 },
+              ],
+              12,
+              0.5,
+              true,
+            );
+            c.stroke();
+            ZS.wline(c, 20, y3, 23, y3 - 3, 13, 0.4);
+            ZS.wline(c, 9, y3 + 3, 9, y3 + 7, 14, 0.4);
+            ZS.wline(c, 19, y3 + 3, 19, y3 + 7, 15, 0.4);
+          },
+          overlay: () => {
+            if (!this.over) return null;
+            if (this.result === CAR) {
+              const sd = this.sides[ROME];
+              overlay.main = "CARTHAGE — the field is won";
+              overlay.sub = "rome " + sd.dead + " dead · " + sd.gone + " fled · cannae, 216 bc";
+              return overlay;
+            }
+            const sd = this.sides[CAR];
+            overlay.main = "ROME — the field is held";
+            overlay.sub = "carthage " + sd.dead + " dead · " + sd.gone + " fled · cannae, 216 bc";
+            return overlay;
+          },
+        };
+      }
+      this._hud.title = "cannae, 216 bc · engagement " + wave;
+      this._hud.stats =
+        "rome " +
+        s0.dead +
+        "d " +
+        s0.gone +
+        "f · carthage " +
+        s1.dead +
+        "d " +
+        s1.gone +
+        "f · " +
+        mm +
+        ":" +
+        ss;
+      return this._hud;
     }
 
     draw(c, a, t) {
