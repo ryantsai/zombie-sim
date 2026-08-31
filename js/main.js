@@ -2,12 +2,12 @@
    Input: drag to pan, wheel to zoom (at cursor), two-finger pinch to zoom,
    tap/click — what it does is up to the scenario pack.
 
-   Three of the four pages want exactly one world that starts at load and runs
-   forever, and they still get it: this file auto-starts unless the page sets
-   `window.ZS_MANUAL_BOOT = true` before loading it. 火柴三國 sets that, because
-   its shell (ZS.App) owns a MENU that must exist before any battle does, and a
-   battle that is torn down and rebuilt every time one is fought. For those
-   pages the same bootstrap is a function:
+   The archived reference pages want exactly one world that starts at load and
+   runs forever, and they still get it: this file auto-starts unless the page
+   sets `window.ZS_MANUAL_BOOT = true` before loading it. 火柴三國 sets that,
+   because its shell (ZS.App) owns a MENU that must exist before any battle
+   does, and a battle that is torn down and rebuilt every time one is fought.
+   For the main game the same bootstrap is a function:
 
      const engine = ZS.Engine.start({ scenario, worldW, worldH, seed, fixedStep });
      engine.step(dt) / engine.speed = 0..4 / engine.stop()
@@ -38,11 +38,11 @@
       opts.seed | 0 || parseInt(params.get("seed"), 10) | 0 || (Math.random() * 0x7fffffff) | 0;
     const nav = new ZS.Nav(world);
     world.nav = nav;
-    // scenario: which pack this page runs. Each HTML page sets
-    // window.ZS_SCEN to a scenario class name before this file loads
-    // (defaults to the outbreak when unset); a caller may pass an instance.
+    // scenario: which pack this page runs. Archived reference pages set
+    // window.ZS_SCEN before this file loads; the main game passes an instance.
+    // Direct starts default to the product scenario, not a reference pack.
     const scenario =
-      opts.scenario || new (window.ZS_SCEN ? ZS[window.ZS_SCEN] : ZS.ScenarioZombie)();
+      opts.scenario || new (window.ZS_SCEN ? ZS[window.ZS_SCEN] : ZS.ScenarioSanguo)();
     ZS.scenario = scenario;
     // terrain: a scenario may lay its own battlefield (river, lake, forest,
     // town — or none of them); the default is the seeded random town
@@ -226,7 +226,7 @@
        frame delta: identical maths every run, so a battle is reproducible from
        its seed, and `speed` (0 = paused, 1x/2x/4x) costs nothing but a
        multiplier on what the accumulator is fed. Unset = the original
-       variable-dt behaviour, which is what the other three pages use. */
+       variable-dt behaviour, which is what the reference pages use. */
     const engine = {
       cv,
       ctx,

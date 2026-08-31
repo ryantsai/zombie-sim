@@ -161,7 +161,7 @@ async function main() {
 
   const orphans = manifest.orphans();
   ok(
-    "no js/ module exports to ZS without a <script> tag on some page",
+    "no product/reference module exports to ZS without a page script tag",
     orphans.length === 0,
     orphans.map((o) => o.file),
   );

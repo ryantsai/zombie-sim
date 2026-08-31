@@ -9,24 +9,24 @@
       "webRoot": "${workspaceFolder}"
     },
     {
-      "name": "The Outbreak (zombiesim.html)",
+      "name": "Reference — The Outbreak",
       "type": "pwa-chrome",
       "request": "launch",
-      "file": "${workspaceFolder}/zombiesim.html",
+      "file": "${workspaceFolder}/reference/zombiesim.html",
       "webRoot": "${workspaceFolder}"
     },
     {
-      "name": "Cannae (battle.html)",
+      "name": "Reference — Cannae",
       "type": "pwa-chrome",
       "request": "launch",
-      "file": "${workspaceFolder}/battle.html",
+      "file": "${workspaceFolder}/reference/battle.html",
       "webRoot": "${workspaceFolder}"
     },
     {
-      "name": "The Hold (hold.html)",
+      "name": "Reference — The Hold",
       "type": "pwa-chrome",
       "request": "launch",
-      "file": "${workspaceFolder}/hold.html",
+      "file": "${workspaceFolder}/reference/hold.html",
       "webRoot": "${workspaceFolder}"
     }
   ]

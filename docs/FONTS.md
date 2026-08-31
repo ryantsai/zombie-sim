@@ -13,7 +13,7 @@ The game's brush-kai face (`SANGUO-DESIGN.md` §6.3).
 ### What is committed here
 
 `lxgw-wenkai-tc.subset.woff2` — a glyph subset of the Regular weight, cut to
-exactly the characters the game can render (1,022 of them as of P3, ~287 KB).
+exactly the characters the game can render (1,240 in the current v1 source).
 The full font is far too large to ship, and the game's vocabulary is bounded,
 so `tools/subset-font.py` harvests every character in every file that can put
 text on screen and cuts the font to those.
@@ -29,14 +29,15 @@ question the build was.
 The script now reads the page instead:
 
 ```bash
-python tools/subset-font.py --sources   # 56 files, 1022 glyphs
+python tools/subset-font.py --sources   # 67 files, 1240 glyphs
 ```
 
-`index.html` is the only page that loads the subset — `zombiesim.html`,
-`battle.html` and `hold.html` are the original sketch pages and use a system
-stack — so what the game can render is exactly `index.html` plus the files in
-its `<script src>` tags. Add a module and the harvest picks it up when you add
-the tag. Forget the tag and `tools/module-manifest.js` fails instead
+`index.html` is the only page that loads the subset — the archived
+`reference/zombiesim.html`, `reference/battle.html`, and
+`reference/hold.html` pages use a system stack — so what the game can render
+is exactly `index.html` plus the files in its `<script src>` tags. Add a module
+and the harvest picks it up when you add the tag. Forget the tag and
+`tools/module-manifest.js` fails instead
 (`ISSUES.md` #14), so neither half is silent any more.
 
 Files are harvested whole, comments included. That over-covers by a handful of

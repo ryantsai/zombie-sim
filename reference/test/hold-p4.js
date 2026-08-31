@@ -1,13 +1,13 @@
 /* The Hold P4 — tiles, persistence, wave planning and the complete night loop.
 
-   The original pages regression only proves that hold.html boots. This suite
-   guards the rules a player can otherwise exploit: dig cannot exceed its
-   budget or pass through buildings, reinforced saves keep their max HP, every
-   planned walker exists, spawns enter from valid grass at the world edge,
-   night controls lock, and a completed night cannot be replayed by reloading
-   its dawn card.
+   The reference-page regression only proves that reference/hold.html boots.
+   This suite guards the rules a player can otherwise exploit: dig cannot
+   exceed its budget or pass through buildings, reinforced saves keep their
+   max HP, every planned walker exists, spawns enter from valid grass at the
+   world edge, night controls lock, and a completed night cannot be replayed
+   by reloading its dawn card.
 
-   node test/hold-p4.js */
+   node reference/test/hold-p4.js */
 "use strict";
 
 const http = require("http");
@@ -15,7 +15,7 @@ const fs = require("fs");
 const path = require("path");
 const { chromium } = require("playwright");
 
-const ROOT = path.resolve(__dirname, "..");
+const ROOT = path.resolve(__dirname, "../..");
 const SAVE_KEY = "zs.hold.v1";
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -54,7 +54,7 @@ async function reset(page) {
 async function main() {
   const server = http.createServer((req, res) => {
     const rel = decodeURIComponent(req.url.split("?")[0]).replace(/^\/+/, "");
-    const file = path.join(ROOT, rel || "hold.html");
+    const file = path.join(ROOT, rel || "reference/hold.html");
     if (!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
       res.writeHead(404).end("not found");
       return;
@@ -75,7 +75,7 @@ async function main() {
   await page.addInitScript(() => {
     window.ZS_NIGHT_LEN = 2;
   });
-  await page.goto("http://127.0.0.1:" + server.address().port + "/hold.html");
+  await page.goto("http://127.0.0.1:" + server.address().port + "/reference/hold.html");
   await boot(page);
 
   console.log("\n[boot + tile rules]");

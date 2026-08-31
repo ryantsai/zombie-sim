@@ -18,17 +18,16 @@ re-deriving anything.
 |---|---|
 | **Phase** | **P7 — complete v1 campaign** |
 | **Status** | ✅ **complete** (P0–P7 ✅) |
-| **Verify** | `npm test` now runs every phase suite: P0 boot/font/save/file://; P1 deterministic real-time battle; P3 campaign; P4 map/handoff/turn/battle; P5 generals/duels/abilities/UI; P6 doctrines/events/logistics/politics/victory/RemoteStore; P7 deterministic long-campaign sweep; The Hold through its P4 dawn; original-page regression; 200-general validator. `test/sanguo-map-shots.js` renders all five biomes, three towns and three forts for visual inspection. |
+| **Verify** | `npm test` runs every Sanguo phase suite: P0 boot/font/save/file://; P1 deterministic real-time battle; P3 campaign; P4 map/handoff/turn/battle; P5 generals/duels/abilities/UI; P6 doctrines/events/logistics/politics/victory/RemoteStore; P7 deterministic long-campaign sweep; 200-general validator. It also runs the quarantined reference regressions. `test/sanguo-map-shots.js` renders all five biomes, three towns and three forts for visual inspection. |
 | **Updated** | 2026-08-31 |
 
-### Active follow-on — The Hold
+### Product scope
 
-The Hold is complete through P4: tiles/dig, blocks/economy/save, the soldier
-ring/larder/upgrades, and the full deterministic night → dawn loop now ship and
-have committed coverage in `test/hold-p4.js`. Its next coherent slice is P5:
-supply crates, offline earnings, milestones, prestige/tutorial/buy-max/number
-formatting, and runner/brute/boss types. P6 remains the final 15-minute balance
-and screenshot pass. See `HOLD-DESIGN.md` §10.
+火柴三國 is the only active game. The Outbreak, Cannae, and The Hold are
+preserved under [`reference/`](../reference/README.md) as runnable engineering
+references; their unfinished roadmaps are not Sanguo follow-on work. Root
+`js/` keeps the generic engine pieces Sanguo consumes, while reference-only
+scenario packs, pages, designs, and tests live entirely in that subtree.
 
 ### Completed v1 slice
 
@@ -84,7 +83,7 @@ design contract.
 | 7.6 | The portrait system — all 200 generals, expanded headgear × beard × expression × hero-feature vocabulary | ✅ | `js/figure/portrait.js`, `js/campaign/data/generals.js` |
 | 7.7 | The environment catalogue — trees, hills, rivers, camps, walls, gates, bridges, ruins, roads | ✅ | `js/art/environment.js` |
 | 7.8 | The UI art catalogue — banner, save-thumb, button glyphs, seal, tally, title banner | ✅ | `js/art/ui.js` |
-| 7.9 | SFX kit — 16 battle events (sword clash, arrows, stone launch/impact, cavalry charge, drums, retreat horn, etc.) on top of the Outbreak's existing voice synth | ✅ | `js/sound.js` |
+| 7.9 | SFX kit — 16 battle events (sword clash, arrows, stone launch/impact, cavalry charge, drums, retreat horn, etc.) on top of the shared voice synth first built for the archived Outbreak | ✅ | `js/sound.js` |
 | 7.10 | Music engine — procedural layered synth (pluck / bass / pad / drums) with `menu` / `battle` / `victory` / `defeat` / 8 `faction_sting_*` / `turn_change` tracks | ✅ | `js/music/music.js` |
 | 7.11 | One real menu track — a 22.6 s guzheng piece (Karplus-Strong synthesis), generated offline, base64-embedded as `js/music/menu-track-data.js` | ✅ | `tools/build-menu-track.py` + `menu-track-data.js` |
 | 7.12 | Brush-kai subset rebuilt from the official source face; `subset-font.py --check` covers all current i18n text | ✅ | `tools/subset-font.py`, `fonts/` |
@@ -162,7 +161,7 @@ the rest. Settings.music flows into `music.setVolume` automatically.
 | 1.8 | BATTLE view + skirmish entry + battle bar | ✅ | `js/app.js`, `js/ui/menu.js` |
 | 1.9 | Battle i18n keys (both tables) + font subset rebuild | ✅ | `js/i18n/*`, `fonts/` |
 | 1.10 | Playwright P1 verification (63 assertions) | ✅ | `test/sanguo-p1.js` |
-| 1.11 | Regression suite for the three original pages | ✅ | `test/pages-regression.js` |
+| 1.11 | Regression suite for the three archived reference pages | ✅ | `reference/test/pages-regression.js` |
 | 1.12 | Bug sweep: 12 fixed, each one now an assertion | ✅ | see below |
 | 1.13 | Seed sweep — no battle may hang | ✅ | `test/sanguo-seed-sweep.js` |
 | 1.14 | Pooled ranged projectiles + four impact paths; logical three-line deployment; special corps; faction armour; selected-unit status box | ✅ | `js/scenarios/sanguo.js`, `js/figure/figure.js`, `js/ui/menu.js` |
@@ -188,7 +187,7 @@ the rest. Settings.music flows into `music.setVolume` automatically.
   fields; order markers fade on elapsed time; `go()` to an unbuilt phase leaves
   a running battle untouched; an unreachable goal is refused and leaves the
   current order intact
-- the three original pages are untouched by the core changes
+- the three archived reference pages remain compatible with the shared core
 
 ---
 
@@ -247,8 +246,9 @@ the rest. Settings.music flows into `music.setVolume` automatically.
   stalemate in 40.8–129.6 s. It also records 20 `STALL_GIVEUP` watchdog drops in
   15 battles, which is why issue 3 remains open rather than hiding congestion
   behind a different timeout
-- `zombiesim.html`, `battle.html` and `hold.html` still boot their own scenario
-  with their expected populations, zero shake offsets and no page errors
+- `reference/zombiesim.html`, `reference/battle.html`, and
+  `reference/hold.html` still boot their own scenario with their expected
+  populations, zero shake offsets, and no page errors
 
 ---
 
@@ -317,8 +317,9 @@ the rest. Settings.music flows into `music.setVolume` automatically.
 ## Core changes made for P1
 
 `AGENTS.md` allows core changes that stay scenario-agnostic. Three were needed;
-all are opt-in and no-ops for `zombiesim.html` / `battle.html` / `hold.html`, and
-`test/pages-regression.js` exists to keep it that way.
+all are opt-in and no-ops for `reference/zombiesim.html`,
+`reference/battle.html`, and `reference/hold.html`; the guard now lives at
+`reference/test/pages-regression.js`.
 
 | File | Change | Why |
 |---|---|---|
@@ -500,13 +501,14 @@ live in `SANGUO-DESIGN.md` §11.)
 
 ## Open / blocked
 
-Tracked in [`ISSUES.md`](ISSUES.md). Nothing blocks P4. Issues 1, 8 and 14 are
-resolved; 2 is now narrowed to "nothing *forces* the check to run", which is a
-pre-commit-hook-or-CI call for the maintainer.
+Tracked in [`ISSUES.md`](ISSUES.md). Nothing blocks the completed v1 slice.
+Issues 1–12 and 14 are resolved; issue 13 (fog of war) remains a v2 nit. The
+GitHub verification workflow now runs the complete suite, including the font
+subset check and archived reference guards, on pushes and pull requests.
 - **Rebuild the font subset whenever any file `index.html` loads gains new
   text** — new glyphs silently fall back otherwise. `test/sanguo-p0.js` runs
   the coverage check for you; standalone it is
-  `python tools/subset-font.py --check`, and `--sources` prints the 56 files it
+  `python tools/subset-font.py --check`, and `--sources` prints the 67 files it
   reads. Rebuilding is one line and needs no download — the source face is
   committed at `assets/fonts/LXGWWenKaiTC-Regular.ttf`:
   `python tools/subset-font.py --source assets/fonts/LXGWWenKaiTC-Regular.ttf`.
@@ -712,8 +714,9 @@ was gating, and could not tell you so.
 - **2026-08-30 (cont.)** — page rename: the outbreak moved to `zombiesim.html`
   and 火柴三國 became `index.html`, the entry point. 45 references updated
   across docs, the font tool, the scenario headers, the verify suites and
-  `.vscode/launch.json` (which now has a config per page). `example/index.html`
-  is untouched — it is the frozen reference original. All suites re-run green.
+  `.vscode/launch.json` (which now has a config per page). That page and
+  `example/index.html` were later archived under `reference/`; this entry
+  records the layout at the time. All suites re-run green.
 - **2026-08-30 (cont.)** — started P2. Replaced per-agent local-press morale
   with `js/battle/morale.js`: a unit pool driven by losses, odds, rear pressure,
   fatigue and commander presence, with wavering, routing and general-gated
@@ -774,7 +777,7 @@ was gating, and could not tell you so.
   paused and casualty re-solves regenerate the footprint at the surviving
   count. An isolated browser pass marched all five shapes at 6–11 px mean slot
   error and shrank a 150-man square to 98 exact slots after 35% losses. Seed 47
-  replayed identically at 78.367 s; all three legacy pages booted clean. Added
+  replayed identically at 78.367 s; all three archived pages booted clean. Added
   `stallGiveups` instrumentation: an aggressive 16-seed diagnostic resolved in
   40.8–129.6 s but invoked the watchdog 20 times across 15 battles, keeping
   pacing issue 3 open.
@@ -815,3 +818,10 @@ was gating, and could not tell you so.
   that only the draw pass refreshed, so an order landing between frames missed.
   New suite `test/sanguo-campaign-ui.js` (25) covers the palette, the guide,
   the tooltip, both march gestures, panning, and the halo's turn state.
+- **2026-08-31 (cont.)** — made the product boundary explicit. 火柴三國 remains
+  at root as the sole active game; The Outbreak, Cannae, and The Hold moved to
+  `reference/` with their scenario packs, design notes, regression suites, and
+  frozen pre-split original. Shared engine modules stayed in `js/` because
+  Sanguo consumes them directly. The archived pages now use explicit scenario
+  selection and `../js/` paths, remain file:// compatible, and are still
+  exercised by `npm run test:reference` and the full `npm test` gate.

@@ -20,8 +20,9 @@ wobble stable per render.
 | `js/art/environment.js` | trees, hills, rivers, camps, walls, gates, bridges, ruins, roads | …the look of a battle field or a campaign map |
 | `js/art/ui.js` | the menu's title banner, save-slot thumbnails, button glyphs | …a new chrome icon or save-slot art |
 
-The other three pages (`zombiesim.html`, `battle.html`, `hold.html`)
-do not load any of these. The art system is 火柴三國-only.
+The archived pages (`reference/zombiesim.html`, `reference/battle.html`,
+`reference/hold.html`) do not load any of these. The art system is
+火柴三國-only.
 
 ---
 

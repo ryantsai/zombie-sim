@@ -2,8 +2,8 @@
  *
  * A reusable catalogue of trees, mountains, rivers, camps, walls, bridges, and
  * ruins, drawn with the same sketch primitives as the rest of the game. The
- * campaign map and the battle field use these. The Outbreak page is not
- * affected (it loads nothing from this file).
+ * campaign map and the battle field use these. The archived Outbreak page is
+ * unaffected (it loads nothing from this file).
  *
  * The look is the boil ink line: a wash in the paper palette for the body
  * and a thin jittered ink line for the contour. Each art piece takes a

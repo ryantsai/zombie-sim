@@ -1,5 +1,9 @@
 # The Hold — a sketch-style zombie clicker (design)
 
+> Archived reference: The Hold is not an active product or Sanguo roadmap
+> item. Its runnable P4 implementation is `reference/hold.html`; unfinished P5
+> and P6 notes below are preserved as historical design material.
+
 Working title: **The Hold**. One screen, one settlement, night after night.
 
 Same boiling-line paper style as *The Outbreak* / *Cannae*. Same engine.
@@ -37,27 +41,22 @@ ready. Nights are fixed 90s so the pace never drags.
 | No-overlap agents | `ZS.updateAgents` (SEP_R 18 / SEP_CORE 10) | soldiers + zombies inherit the spacing fix |
 | Pan/zoom/pinch | `ZS.Camera` | night: camera eases to core; day: free |
 | Y-sorted rendering | `ZS.drawScene` | blocks, trees, agents interleave correctly |
-| Scenario selection | `window.ZS_SCEN` | `hold.html` sets `"ScenarioHold"` |
+| Scenario selection | `window.ZS_SCEN` | `reference/hold.html` sets `"ScenarioHold"` |
 | Agent look | `drawAgent` | soldiers = survivor variant; zombies = existing st=2 |
 | Damageable doors | `ZS.Buildings` door-HP pattern | precedent for HP'd blocks; new block module draws the same way |
 
-New files (all vanilla JS, classic scripts, `ZS` namespace, file:// safe):
+Current archived layout (all vanilla JS, classic scripts, `ZS` namespace,
+file:// safe):
 
 ```
-hold.html               entry page: canvas + <div id="ui"> overlay
-js/tiles.js             tile grid, palette/paint, tile-aware terrain pre-render,
-                        writes walkability into ZS.Nav
-js/blocks.js            block catalog, placement validation, block HP/cracks,
-                        building = set of blocks on the grid
-js/hold.js              ScenarioHold: day/night state machine, wave spawner,
-                        soldier ring AI, economy (costs, income, prestige),
-                        achievements, save/load (localStorage), offline earnings
-js/ui.js                DOM overlay: side panel, cost buttons (1/10/max),
-                        toasts, floating +N, results card, tutorial, tooltips
+reference/hold.html                 entry page + DOM overlay
+reference/js/scenarios/hold.js      archived ScenarioHold implementation
+js/tiles.js                         shared tile grid used by Sanguo forts
+js/blocks.js                        shared damageable block layer
 ```
 
-`js/scenarios/zombie.js`, `cannae.js`, and every engine file stay untouched.
-`hold.html` + the four new files are the whole feature.
+The page loads the root shared engine through `../js/...`; only Hold-specific
+code is kept in `reference/`.
 
 ---
 
@@ -349,7 +348,8 @@ scenario packs.
 4. **P4 — the night (shipped)**: complete deterministic wave plans, grass-edge
    spawning with closed-edge redistribution, dusk/night/dawn, click combat,
    weather, kill rewards + early-clear bonus, results card and soft-fail.
-   Verified: 22/22 committed Playwright checks in `test/hold-p4.js`, including
+   Verified: 22/22 committed Playwright checks in
+   `reference/test/hold-p4.js`, including
    an accelerated scripted night 1 through its persisted dawn.
 5. **P5 — the rest of the checklist**: supply crate, offline earnings,
    milestones, prestige, tutorial, buy-max, number formatting,
@@ -357,7 +357,8 @@ scenario packs.
 6. **P6 — balance pass**: play 15 minutes straight, adjust BAL, screenshots.
 
 Each phase: `node --check` + `npx oxfmt js/` + `npx oxlint js/`, and a
-Playwright smoke (headless chrome, `file:///…/hold.html`) before moving on.
+Playwright smoke (headless chrome, `file:///…/reference/hold.html`) before
+moving on.
 
 ---
 

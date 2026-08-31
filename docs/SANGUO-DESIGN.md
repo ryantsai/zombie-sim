@@ -2,17 +2,17 @@
 
 Working title: **火柴三國** (_huǒchái sānguó_) · English: **Matchstick Three Kingdoms**.
 
-A hand-drawn, boiling-line game built on the same engine as *The Outbreak* /
-*Cannae* / *The Hold*. It takes the `battle.html` demo scene (Cannae, 781
-figures, formations + morale + rout) and turns it into the **real-time battle
-layer** of a larger game whose **meta layer** is a turn-based map-strategy RPG:
-you run a warlord faction across Han China, grow your generals like RPG
-characters, and when armies meet you drop into a live tactical battle you
-actually command.
+A hand-drawn, boiling-line game built from lessons preserved in the archived
+*Outbreak*, *Cannae*, and *Hold* references. It turns the formation, morale,
+and rout ideas from `reference/battle.html` into the **real-time battle layer**
+of a larger game whose **meta layer** is a turn-based map-strategy RPG: you run
+a warlord faction across Han China, grow your generals like RPG characters,
+and when armies meet you drop into a live tactical battle you actually command.
 
-> Status: **v0.1 — scaffolding the four pillars the user named.** Nothing built
-> yet. This doc is the contract; it will grow round-by-round like
-> `OUTBREAK-DESIGN.md`.
+> Status: **v1 campaign complete.** This remains the design contract; current
+> implementation status and verification live in `PROGRESS.md`. Historical
+> Outbreak design notes now live at
+> `reference/docs/OUTBREAK-DESIGN.md`.
 
 ---
 
@@ -47,8 +47,8 @@ CAMPAIGN TURN +1  (AI factions also moved; the map has changed)
 
 A full campaign is many turns; a battle is **60–180 s** (inherited Cannae
 pacing). The player can also just play **skirmish battles** straight from a
-menu — that's `battle.html` with a commander attached, and it's the first
-milestone (§10 P1).
+menu — conceptually the archived `reference/battle.html` with a commander
+attached, and it was the first milestone (§10 P1).
 
 ---
 
@@ -230,8 +230,8 @@ lays men into slots. (`FIELD_CAP` is provisional — see the perf caveat in §4.
 | `kind` | When | Reuses | Notes |
 |---|---|---|---|
 | `open` | armies clash in open country | the Cannae battlefield (`ScenarioSanguo.terrain` lays plain/river/hills/forest) | the default; `objective` = `annihilate` / `rout` / `break through` |
-| `town` | battle inside a held city with no standing wall | **`zombiesim.html` / the Outbreak town** — `ZS.Buildings.generate` streets, buildings, doors; `walkBlocked` per unit | street fighting: LOS matters, cavalry weak, `objective` usually `rout` |
-| `fort` | attacking a walled/besieged city | **`hold.html` / the Hold** — `ZS.Tiles` ground grid + `js/blocks.js` wall/gate blocks with door-HP; defender deploys on the ring | attacker must breach a gate/wall (block HP, reuse the Outbreak door-chew + grenade/fire), defender gets a morale bonus; `objective` = `hold N turns` (defender) / `break through` (attacker). Wall-assault *tech* (ladders/rams/towers) is deferred — v1 breach = focus-fire a gate block. |
+| `town` | battle inside a held city with no standing wall | **`reference/zombiesim.html` / the Outbreak town** — `ZS.Buildings.generate` streets, buildings, doors; `walkBlocked` per unit | street fighting: LOS matters, cavalry weak, `objective` usually `rout` |
+| `fort` | attacking a walled/besieged city | **`reference/hold.html` / the Hold** — `ZS.Tiles` ground grid + `js/blocks.js` wall/gate blocks with door-HP; defender deploys on the ring | attacker must breach a gate/wall (block HP, reuse the Outbreak door-chew + grenade/fire), defender gets a morale bonus; `objective` = `hold N turns` (defender) / `break through` (attacker). Wall-assault *tech* (ladders/rams/towers) is deferred — v1 breach = focus-fire a gate block. |
 
 `ScenarioSanguo` picks its `terrain()` implementation off `field.kind`, so all
 three share one scenario pack. The province record carries `hasWall` and a
@@ -701,9 +701,10 @@ js/battle/ability.js             active/passive general abilities
 js/ui/*.js                       DOM overlay: menus, HUD, rosters, after-action card
 ```
 
-Untouched: every existing `js/*.js` core file, `js/scenarios/{zombie,cannae,hold}.js`,
-and the other three HTML pages. `sanguo.js` implements the scenario contract;
-everything else is new top-level code on `window.ZS`.
+The reusable root `js/*.js` core remains shared. The earlier scenario packs and
+pages are preserved under `reference/`, while `js/scenarios/sanguo.js`
+implements the product scenario contract. Sanguo-only modules attach their
+top-level APIs to `window.ZS` and are loaded only by `index.html`.
 
 ---
 
@@ -721,7 +722,7 @@ everything else is new top-level code on `window.ZS`.
 | **P7** | Balance, pacing, remaining content (the 200-person general almanac is filled; provinces/dialogue/events remain), audio | full campaign playable start to a win condition |
 
 P0–P2 stand alone as a commandable skirmish game — the same "playable at every
-phase" discipline as `HOLD-DESIGN.md` §10.
+phase" discipline as `reference/docs/HOLD-DESIGN.md` §10.
 
 ---
 
@@ -751,10 +752,11 @@ phase" discipline as `HOLD-DESIGN.md` §10.
 - **Q — Multiplayer:** **out of scope for v1.** Keep it *possible*: battles stay
   deterministic (seeded `ZS.rng32`, order log, no bare `Math.random`), the
   `Store`/`Auth` seams stay clean. Not designed-for beyond that.
-- **Q — Field kinds / sieges:** **`open` / `town` / `fort`**, reusing the
-  Cannae, Outbreak (`zombiesim.html`) and Hold (`hold.html`) terrain respectively.
-  Wall-assault tech (ladders/rams/towers) deferred; v1 breach = focus-fire a
-  gate block. See §4.3.
+- **Q — Field kinds / sieges:** **`open` / `town` / `fort`**, reusing ideas
+  from the archived Cannae, Outbreak (`reference/zombiesim.html`), and Hold
+  (`reference/hold.html`) terrain respectively. Wall-assault tech
+  (ladders/rams/towers) deferred; v1 breach = focus-fire a gate block. See
+  §4.3.
 - **Q — Identity:** **Stage 1 anonymous local `deviceId`, no accounts.**
   Stage 2 adds a `ZS.Auth` seam + OAuth (PKCE) for cloud saves / multiplayer;
   `Store` interface unchanged; anon save migrates up on first sign-in. See §5.5.
@@ -787,16 +789,17 @@ and fog of war remain optional post-v1 directions.)*
 | Spatial hash | `ZS.Grid` | battle neighbour queries, separation |
 | Pathfinding + walkability + LOS | `ZS.Nav` (`astar/los/isWalkable`) | single generals, fire/ability LOS gating; group moves use the new flow field |
 | No-overlap crowd | `ZS.updateAgents` (`SEP_R/SEP_CORE`, `sepR` override) | Cannae already tunes `sepR:13` for packed ranks |
-| Formation slots + step machine | `js/scenarios/cannae.js` | the `slot` + per-unit step script — swap the script source for player orders |
-| Large-battle choreography reference | `cannae.js` crescent/rout/hunt | morale, `a.free` routers, edge-stream, `HUNT_FRAC` all reusable |
-| `town` battlefield | `js/buildings.js` (`ZS.Buildings.generate`), the Outbreak town | streets/buildings/doors + `walkBlocked`; from `zombiesim.html` |
-| `fort` battlefield | `js/tiles.js` (`ZS.Tiles`) + `js/blocks.js`, the Hold | ring wall / gate blocks with door-HP, tile ground; from `hold.html` |
+| Formation slots + step machine | `reference/js/scenarios/cannae.js` | the `slot` + per-unit step script — swap the script source for player orders |
+| Large-battle choreography reference | `reference/js/scenarios/cannae.js` crescent/rout/hunt | morale, `a.free` routers, edge-stream, `HUNT_FRAC` all reusable |
+| `town` battlefield | `js/buildings.js` (`ZS.Buildings.generate`), informed by the Outbreak town | streets/buildings/doors + `walkBlocked`; reference at `reference/zombiesim.html` |
+| `fort` battlefield | `js/tiles.js` (`ZS.Tiles`) + `js/blocks.js`, informed by The Hold | ring wall / gate blocks with door-HP, tile ground; reference at `reference/hold.html` |
 | Y-sorted scene + HUD pipeline | `ZS.drawScene`, `scenario.hud` | battle HUD, after-action card via `overlay()` |
 | Transient FX | `ZS.fx` (`{t}` decay/prune) | tracers, blood, dust, ability bursts |
 | Spatialized audio, no assets | `ZS.sound` (`event/tick`, formant voices) | battle cues; the scenario names events |
-| Scenario selection | `window.ZS_SCEN` → `ZS[name]` in `main.js` | `index.html` sets `"ScenarioSanguo"` |
+| Scenario selection | `ZS.Engine.start({ scenario })` in `main.js` | `ZS.App` passes a `ScenarioSanguo` instance; archived pages use `window.ZS_SCEN` |
 | Page-side inspection | `ZS.debug` `{cam,world,nav,buildings,scenario}` | Playwright audits, determinism probes |
 
-Nothing in `js/*.js` core changes for this game except, possibly, a fixed
-sim-step option in `main.js` (§8) — added as an opt-in flag, no-op for the
-other three pages, per the `AGENTS.md` core-change rule.
+The reusable modules remain in root `js/` because Sanguo actively depends on
+them. Product-specific code lives there too; only the three archived scenario
+packs live under `reference/js/`. Shared-engine additions stay opt-in and no-op
+for the reference pages, per the `AGENTS.md` core-change rule.

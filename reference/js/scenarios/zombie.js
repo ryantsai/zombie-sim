@@ -8,7 +8,7 @@
  *
  * To build a different scenario (an ancient battlefield, a modern one,
  * a fantasy skirmish...), copy this file, swap the script tag in
- * zombiesim.html, and reimplement the same surface:
+ * reference/zombiesim.html, and reimplement the same surface:
  *
  *   attachStains(st)                        register splat/corpse painters
  *   makeAgent(x, y, st, extra)              agent record (core fields + yours)

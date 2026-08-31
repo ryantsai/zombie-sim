@@ -1,17 +1,18 @@
-/* The three original pages must be byte-for-byte unaffected by the sanguo work.
-   main.js was re-scoped into ZS.Engine.start() with an auto-start tail; this
-   asserts each page still boots, populates, sims, and draws with no errors.
+/* The three archived reference pages must remain runnable while the Sanguo
+   product evolves. This asserts each page still boots, populates, simulates,
+   and draws with no errors from its reference/ location.
 
-   node test/pages-regression.js */
+   node reference/test/pages-regression.js */
 "use strict";
 
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const { pathToFileURL } = require("url");
 const { chromium } = require("playwright");
-const manifest = require("../tools/module-manifest.js");
+const manifest = require("../../tools/module-manifest.js");
 
-const ROOT = path.resolve(__dirname, "..");
+const ROOT = path.resolve(__dirname, "../..");
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -31,9 +32,9 @@ function ok(name, cond, detail) {
 }
 
 const PAGES = [
-  { file: "zombiesim.html", scen: "ScenarioZombie", minAgents: 30 },
-  { file: "battle.html", scen: "ScenarioCannae", minAgents: 400 },
-  { file: "hold.html", scen: "ScenarioHold", minAgents: 0 },
+  { file: "reference/zombiesim.html", scen: "ScenarioZombie", minAgents: 30 },
+  { file: "reference/battle.html", scen: "ScenarioCannae", minAgents: 400 },
+  { file: "reference/hold.html", scen: "ScenarioHold", minAgents: 0 },
 ];
 
 async function main() {
@@ -102,10 +103,32 @@ async function main() {
       fixedStep: ZS.engine.fixedStep,
     }));
     ok("the loop advances", after.simT > 0.5, after);
-    ok("variable-dt path (no fixed step on the old pages)", after.fixedStep === 0, after);
+    ok("variable-dt path (no fixed step on reference pages)", after.fixedStep === 0, after);
     if (p.minAgents > 0) ok("agents are moving", after.moved, after);
     ok("no console errors", errors.length === 0, errors);
     await page.close();
+
+    const fileErrors = [];
+    const filePage = await ctx.newPage();
+    filePage.on("console", (m) => {
+      if (m.type() === "error") fileErrors.push(m.text());
+    });
+    filePage.on("weberror", (e) => fileErrors.push(String(e.error())));
+    await filePage.goto(pathToFileURL(path.join(ROOT, p.file)).href);
+    await filePage.waitForFunction(
+      () => window.ZS && ZS.debug && ZS.engine && ZS.engine.running,
+      null,
+      {
+        timeout: 10000,
+      },
+    );
+    const fileScenario = await filePage.evaluate(() => ZS.debug.scenario.constructor.name);
+    ok("double-clicks over file://", fileScenario === p.scen && fileErrors.length === 0, {
+      expected: p.scen,
+      actual: fileScenario,
+      errors: fileErrors,
+    });
+    await filePage.close();
   }
 
   await browser.close();

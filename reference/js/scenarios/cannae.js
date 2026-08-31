@@ -4,7 +4,8 @@
  * look, move, fight, break, and how the battle plays out. The core engine
  * (js/*.js) knows nothing about the Punic war — it runs the clock,
  * physics, spacing, navigation, camera, and rendering pipeline, and calls
- * this pack for the parts a scenario decides. See js/scenarios/zombie.js
+ * this pack for the parts a scenario decides. See
+ * reference/js/scenarios/zombie.js
  * for the contract; this pack implements the same surface:
  *
  *   attachStains(st)                        register splat/corpse painters

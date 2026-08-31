@@ -17,7 +17,7 @@ someone could reasonably trip over.
 
 | # | Status | Area | Summary |
 |---|---|---|---|
-| [1](#1) | ~~RESOLVED~~ | tooling | ~~`.verify/` is gitignored, so no test suite is committed~~ — suites moved to `test/`, `npm test` |
+| [1](#1) | ~~RESOLVED~~ | tooling | ~~`.verify/` is gitignored, so no test suite is committed~~ — suites moved to committed `test/` trees, `npm test` |
 | [2](#2) | ~~RESOLVED~~ | tooling | GitHub verification now forces the font-subset check on every push and pull request |
 | [3](#3) | ~~RESOLVED~~ | battle | Reference and seeded battles resolve inside the design pacing window |
 | [4](#4) | ~~RESOLVED~~ | battle | Five open biomes, three town plans and three fort plans ship |
@@ -47,16 +47,16 @@ probes and screenshot output, all still ignored.
 test/sanguo-p0.js             48 assertions
 test/sanguo-p1.js             63 assertions
 test/sanguo-p3.js            131 assertions
-test/pages-regression.js      32 assertions — guards the other three pages
-test/hold-p4.js               22 assertions — guards the Hold through dawn
+reference/test/pages-regression.js  35 assertions — guards all reference pages + file://
+reference/test/hold-p4.js           22 assertions — guards the Hold through dawn
 test/sanguo-seed-sweep.js     16-seed no-hang sweep (slow; not in npm test)
 test/campaign-sweep.js        campaign pacing probe for issue 10
 test/sanguo-*-shot.js         screenshot helpers; PNGs still land in .verify/
 ```
 
 `npm test` runs `oxlint`, then every phase/regression suite plus
-`tools/check-generals.js`. Each
-script resolves the repo root itself, so the move needed no edits inside them.
+`tools/check-generals.js`. The two non-Sanguo suites now resolve the repo root
+from `reference/test/` and run together through `npm run test:reference`.
 
 This also closes the enforcement half of issue 2: `npm test` is now a single
 command that runs the font `--check`, which makes a pre-commit hook or CI step
@@ -92,13 +92,13 @@ cheerfully reported the subset complete, because the check was asking the same
 too-narrow question the build was.*
 
 Fixed 2026-08-31. The list is now derived from the page rather than kept beside
-it. `index.html` is the only page that loads the subset — the other three are
-the original sketch pages and use a system stack — so the set of files that can
-put kai on screen is exactly `index.html` plus its `<script src>` tags. That is
-what `sources()` reads.
+it. `index.html` is the only page that loads the subset — the three archived
+reference pages use a system stack — so the set of files that can put kai on
+screen is exactly `index.html` plus its `<script src>` tags. That is what
+`sources()` reads.
 
 ```
-python tools/subset-font.py --sources    # 56 files, 1022 glyphs
+python tools/subset-font.py --sources    # 67 files, 1240 glyphs
 ```
 
 Files are harvested whole, comments included: it over-covers by a handful of
@@ -246,22 +246,22 @@ decide to convert one. Because the index was already LF, `git add
 `git rm -r --cached . && git reset --hard` refreshed the working copy in place.
 The tree is now LF end to end (97 text files, 3 binary, 1 with no newline).
 
-`npm run format` is back to plain `oxfmt js/` and `format:all` is gone, the two
-having become the same command. Running it over all 59 files now reports
-`Finished in 61ms on 59 files` and leaves `git status` empty, which is what the
-issue asked for.
+`npm run format` is the canonical formatter command and `format:all` is gone.
+It covers product code, tests, tools, and the JavaScript kept under
+`reference/`; `.gitattributes` keeps the whole tracked tree on LF.
 
 ## 9
 
 **RESOLVED · render · `scenario.hud()` reuses its records**
 
 Resolved 2026-08-31 while finishing the Hold's P4 night. `js/draw.js` calls
-`scenario.hud()` every frame, so all four packs now keep one HUD record and
-stable legend/overlay callbacks, updating only their dynamic strings and
-numbers. End overlays, dawn-card wrappers and Sanguo's i18n parameter objects
-are reused too; the zombie HUD also fills a reusable counts record. The P1 and
-pages regressions call all four packs twice and assert identity for the HUD and
-both callbacks, so a literal-with-closures cannot quietly return here.
+`scenario.hud()` every frame, so the product pack and all three archived packs
+keep one HUD record and stable legend/overlay callbacks, updating only their
+dynamic strings and numbers. End overlays, dawn-card wrappers and Sanguo's
+i18n parameter objects are reused too; the archived zombie HUD also fills a
+reusable counts record. The P1 and reference-page regressions call all four
+packs twice and assert identity for the HUD and both callbacks, so a
+literal-with-closures cannot quietly return here.
 
 ---
 
@@ -439,7 +439,7 @@ Fixed 2026-08-31, with both options the issue recommended.
 ### 1. `npm test` lints first
 
 ```json
-"lint": "oxlint js/ test/ tools/",
+"lint": "oxlint js/ test/ tools/ reference/js/ reference/test/",
 "test": "npm run lint && node test/sanguo-p0.js && ..."
 ```
 
@@ -463,18 +463,18 @@ indent ≤ 2, which is this codebase's universal module-export convention.
 Deeper assignments (`ZS.engine`, `ZS.scenario`, `ZS.debug`) are runtime handles
 set inside a function once a scenario is live, and are correctly excluded.
 
-`test/sanguo-p0.js` asserts index.html delivers all 77 of its names;
-`test/pages-regression.js` does the same for the other three pages (29, 30 and
-28). Both name the offending file in the failure detail:
+`test/sanguo-p0.js` asserts index.html delivers all 89 of its names;
+`reference/test/pages-regression.js` does the same for the three archived pages
+(29, 30 and 28). Both name the offending file in the failure detail:
 
 ```
-FAIL  all 77 modules index.html loads are on ZS  -> ["Campaign (js/campaign/campaign.js)"]
+FAIL  all 89 modules index.html loads are on ZS  -> ["Campaign (js/campaign/campaign.js)"]
 ```
 
-The manifest also catches what lint structurally cannot: a `js/` module that
-exports to `ZS` and appears in no page's script list — a new file with a
-forgotten `<script>` tag, which produces the same `undefined` symptom and which
-no static check of the file itself can see.
+The manifest also catches what lint structurally cannot: a module under `js/`
+or `reference/js/` that exports to `ZS` and appears in no page's script list —
+a new file with a forgotten `<script>` tag, which produces the same `undefined`
+symptom and which no static check of the file itself can see.
 
 ```
 FAIL  no js/ module exports to ZS without a <script> tag on some page

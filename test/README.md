@@ -1,7 +1,8 @@
 # Verification suites
 
-Playwright checks that ship with the repo. `npm test` runs `oxlint` first, then every
-phase suite and the almanac gate, in the order that fails fastest:
+Sanguo checks that ship with the repo. `npm test` runs `oxlint` first, then
+every product phase suite, the archived reference guards, and the almanac gate
+in the order that fails fastest:
 
 ```bash
 npm test
@@ -13,10 +14,14 @@ npm test
 | `sanguo-p1.js`          | The skirmish battle: deployment, the command layer, determinism, no hangs, clean teardown                                                                                                                                                                                                    |
 | `sanguo-p3.js`          | The campaign: map invariants, the general almanac, every order and its refusals, ten seasons of invariants, save/reload/resume                                                                                                                                                               |
 | `sanguo-campaign-ui.js` | The campaign map as an _interface_: that the warlord palette stays separable (and further apart still where two of them share a border), that the guide line and the tooltip track what is selected, and that click-to-march and drag-to-march give the same order without panning the sheet |
-| `hold-p4.js`            | The Hold through P4: bounded digging, reinforced save restore, complete deterministic wave plans, edge spawns, locked night controls, dusk/night/dawn, rewards, soft-fail, and non-replayable dawn persistence                                                                         |
-| `pages-regression.js`   | That `zombiesim.html`, `battle.html` and `hold.html` still boot, and that each one delivers every module it loads — this is the only thing standing between the three original pages and a core change                                                                                       |
 | `sanguo-seed-sweep.js`  | The long no-hang sweep. Slow; not in `npm test`, run it after touching battle movement                                                                                                                                                                                                       |
 | `campaign-sweep.js`     | Campaign pacing probe — how fast ground changes hands (`ISSUES.md` #10). Reports numbers, asserts nothing                                                                                                                                                                                    |
+
+The non-Sanguo guards moved with their code to
+[`reference/test/`](../reference/test/): `pages-regression.js` boots all three
+archived pages over HTTP and `file://` and checks their manifests, while
+`hold-p4.js` preserves The Hold's completed P4 rules. Run both with
+`npm run test:reference`.
 
 Screenshot helpers (`sanguo-shot.js`, `sanguo-battle-shot.js`,
 `sanguo-campaign-shot.js`, or `npm run shots`) write PNGs into `.verify/`,
@@ -32,15 +37,15 @@ cost two debugging sessions in one day.
 
 Two guards, because they catch different things:
 
-1. **`oxlint js/ test/ tools/` at the front of `npm test`.** A parse error is
-   the cheapest possible failure and now gets reported as one, with a file and
-   a line, before Playwright ever launches.
+1. **`oxlint js/ test/ tools/ reference/js/ reference/test/` at the front of
+   `npm test`.** A parse error is the cheapest possible failure and now gets
+   reported as one, with a file and a line, before Playwright ever launches.
 2. **The module manifest.** `tools/module-manifest.js` reads each page for its
    `<script src>` list and each of those files for the `ZS.<name> =` exports it
    promises at module indent; the suites assert the booted page delivered every
-   name. It also flags the reverse — a `js/` module that exports to `ZS` and is
-   in no page's script list, which is a forgotten `<script>` tag and which no
-   lint can see.
+   name. It also flags the reverse — a module under `js/` or `reference/js/`
+   that exports to `ZS` and is in no page's script list, which is a forgotten
+   `<script>` tag and which no lint can see.
 
 Nothing is hand-maintained: add a module and the manifest picks it up from the
 source. Run `npm run test:manifest` to print what each page promises.
@@ -56,6 +61,6 @@ here instead**, because a suite nobody else can run is not a guard. That was
 `ISSUES.md` #1, and it had already cost something — P3 added a fifth suite and
 had to edit the P1 one, and none of it was visible to anyone else.
 
-Each script resolves the repo root as `path.resolve(__dirname, "..")` and
-serves it over a throwaway `http.createServer` on a random port, so nothing
-here depends on where it is run from or on a dev server being up.
+Each script resolves the repo root from its own directory and serves it over a
+throwaway `http.createServer` on a random port, so nothing depends on where it
+is run from or on a dev server being up.

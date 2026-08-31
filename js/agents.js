@@ -5,7 +5,8 @@
    hard walkability clamp, and the dead compaction.
    Everything about WHO the agents are — appearance, behavior, weapons,
    speech, waves, HUD — lives in the scenario pack (ZS.scenario), loaded
-   after this file. See js/scenarios/zombie.js for the full contract.
+   after this file. See reference/js/scenarios/zombie.js for the original
+   full contract and js/scenarios/sanguo.js for the product implementation.
    Movement primitives shared with scenarios: ZS.planAndFollow,
    ZS.wander, ZS.wanderTarget. */
 (() => {

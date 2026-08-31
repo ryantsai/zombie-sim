@@ -1,9 +1,9 @@
 {
-  "name": "zombie-sim",
+  "name": "matchstick-sanguo",
   "private": true,
-  "description": "The Outbreak — a hand-drawn sketch zombie sim on a zoomable paper world",
+  "description": "火柴三國 — a hand-drawn turn-based campaign RPG with real-time battles",
   "scripts": {
-    "test": "npm run lint && npm run test:p0 && npm run test:p1 && npm run test:p3 && npm run test:p4 && npm run test:p5 && npm run test:p6 && npm run test:p7 && npm run test:ui && npm run test:hold && npm run test:pages && node tools/check-generals.js",
+    "test": "npm run lint && npm run test:p0 && npm run test:p1 && npm run test:p3 && npm run test:p4 && npm run test:p5 && npm run test:p6 && npm run test:p7 && npm run test:ui && npm run test:reference && node tools/check-generals.js",
     "test:p0": "node test/sanguo-p0.js",
     "test:p1": "node test/sanguo-p1.js",
     "test:p3": "node test/sanguo-p3.js",
@@ -12,12 +12,13 @@
     "test:p6": "node test/sanguo-p6-ai.js && node test/sanguo-p6-campaign.js && node test/sanguo-p6-remote.js",
     "test:p7": "node test/sanguo-p7-campaign-sweep.js",
     "test:ui": "node test/sanguo-campaign-ui.js",
-    "test:hold": "node test/hold-p4.js",
-    "test:pages": "node test/pages-regression.js",
+    "test:reference": "npm run test:reference:hold && npm run test:reference:pages",
+    "test:reference:hold": "node reference/test/hold-p4.js",
+    "test:reference:pages": "node reference/test/pages-regression.js",
     "test:seeds": "node test/sanguo-seed-sweep.js",
     "shots": "node test/sanguo-shot.js && node test/sanguo-battle-shot.js && node test/sanguo-campaign-shot.js && node test/sanguo-map-shots.js",
-    "format": "oxfmt js/",
-    "lint": "oxlint js/ test/ tools/",
+    "format": "oxfmt js/ test/ tools/ reference/js/ reference/test/",
+    "lint": "oxlint js/ test/ tools/ reference/js/ reference/test/",
     "test:manifest": "node tools/module-manifest.js"
   },
   "devDependencies": {

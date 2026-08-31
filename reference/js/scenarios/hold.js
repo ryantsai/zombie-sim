@@ -1,5 +1,5 @@
-/* The Hold — a tile-based base defense (a testbed for the tile engine, not a
-   full game; design: docs/HOLD-DESIGN.md).
+/* The Hold — a tile-based base defense (an archived tile-engine reference,
+   not the main game; design: reference/docs/HOLD-DESIGN.md).
    P1: the day phase — a 40x30 grid of 40px tiles, dig water/sand/road on a
    per-day budget (water is a hard block in the nav grid, so a moat holds).
    P2: the block layer — walls, gates, scrap yards, barracks, turrets,

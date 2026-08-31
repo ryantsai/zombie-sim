@@ -6,8 +6,8 @@
    the same shimmer as the strokes, at a cost of one fillText per character —
    fine at label volumes, and no glyph atlas needed.
 
-   Additive: only index.html loads this file; the other three pages are
-   untouched. */
+   Product-only: index.html loads this file; the archived reference pages do
+   not. */
 (() => {
   "use strict";
   const ZS = (window.ZS = window.ZS || {});

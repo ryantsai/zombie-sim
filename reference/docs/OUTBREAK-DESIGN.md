@@ -1,16 +1,21 @@
 # OUTBREAK-DESIGN.md — defender corps, outside horde, generative land, fire
 
+> Archived reference: The Outbreak is not an active product or Sanguo roadmap
+> item. Its runnable page is `reference/zombiesim.html`, its scenario pack is
+> `reference/js/scenarios/zombie.js`, and the paths below describe the shared
+> root engine unless explicitly marked as reference-only.
+
 Work order (user priority): **F1 defenders → F2 outside horde → F3 generative
-landscape → F4 fire/grenades**. All of it lands on `zombiesim.html` (the outbreak).
-`battle.html` and `hold.html` keep working unchanged. Same engine, same
-sketch style, same file:// classic-script rules (see AGENTS.md hard
-constraints).
+landscape → F4 fire/grenades**. All of it landed on
+`reference/zombiesim.html` (the outbreak). `reference/battle.html` and
+`reference/hold.html` keep working unchanged. Same engine, same sketch style,
+same file:// classic-script rules (see root `AGENTS.md` hard constraints).
 
 Two workstreams, disjoint files:
 
 | stream | files owned | features |
 |---|---|---|
-| **Horde** | `js/scenarios/zombie.js` only | F1, F2, F4 |
+| **Horde** | `reference/js/scenarios/zombie.js` only | F1, F2, F4 |
 | **Land** | `js/world.js`, `js/buildings.js`, `js/main.js` (seed line only) | F3 |
 
 ## Shared contracts (both streams must honor)
@@ -222,9 +227,9 @@ up-right, six pinned town anchors). Vary the topology per seed.
   default path only. `layoutForest` and `placeAllTrees` may get
   slightly wider variety (grove count 5–10, forest r 300–520) but
   must respect the existing `opts` pins (`none`, `grovePos`).
-- **Verification**: two `?seed=A` loads of `zombiesim.html` render
+- **Verification**: two `?seed=A` loads of `reference/zombiesim.html` render
   identically; different seeds differ in river orientation/lake
-  presence/district count. `battle.html` (Cannae) boots unchanged.
+  presence/district count. `reference/battle.html` (Cannae) boots unchanged.
 
 ## F4 — grenades and fire (`zombie.js`)
 
@@ -813,7 +818,8 @@ that harder.
 2. `.verify/regression.js` → boots, agents separated, no page errors,
    fps sane (fit view 30+ on this box; the sim is heavier now — expect
    ~35–45).
-3. Headed Chrome (channel chrome) on `zombiesim.html`: watch a full round —
+3. Headed Chrome (channel chrome) on `reference/zombiesim.html`: watch a full
+   round —
    packs arriving from the edges in groups, defender arcs around the
    districts, a squad breaking and falling back to the next line,
    grenades arcing, a burning agent sprinting, a turret holding a
@@ -822,5 +828,6 @@ that harder.
    (Terrain-only by design: `world.seed` pins river/lake/districts;
    behavior stays on unseeded `Math.random` — same seed, different
    fight. Seeding the behavioral RNG is a known, deferred change.)
-5. `battle.html` + `hold.html` boot with zero page errors (terrain
+5. `reference/battle.html` + `reference/hold.html` boot with zero page errors
+   (terrain
    pins intact).

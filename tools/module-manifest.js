@@ -18,8 +18,9 @@
    scenario is live (`ZS.engine`, `ZS.scenario`, `ZS.debug`) and are not part of
    what a page owes at boot.
 
-   Used by test/sanguo-p0.js (index.html) and test/pages-regression.js (the
-   other three), which assert every promised name is actually there.
+   Used by test/sanguo-p0.js (the product page) and
+   reference/test/pages-regression.js (the archived demos), which assert every
+   promised name is actually there.
 
    Run standalone to see the manifest:  node tools/module-manifest.js */
 "use strict";
@@ -28,18 +29,33 @@ const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
-const PAGES = ["index.html", "zombiesim.html", "hold.html", "battle.html"];
+const PAGES = [
+  "index.html",
+  "reference/zombiesim.html",
+  "reference/hold.html",
+  "reference/battle.html",
+];
+const MODULE_ROOTS = ["js", "reference/js"];
 
 /* Assignment to ZS.<name> at the module's own indent, not inside a function. */
 const EXPORT_RE = /^ {0,2}(?:window\.)?ZS\.([A-Za-z_$][\w$]*)\s*=/gm;
 
-/* `<script src="js/...">`, in load order, ignoring anything cross-origin. */
+function repoPath(file) {
+  return path.relative(ROOT, file).split(path.sep).join("/");
+}
+
+/* Local `<script src>`, in load order and resolved relative to its HTML page. */
 function scripts(page) {
-  const html = fs.readFileSync(path.join(ROOT, page), "utf-8");
+  const pageFile = path.join(ROOT, page);
+  const html = fs.readFileSync(pageFile, "utf-8");
   const out = [];
   const re = /<script[^>]*\ssrc=["']([^"']+)["']/g;
   let m;
-  while ((m = re.exec(html)) !== null) if (!/^[a-z]+:\/\//.test(m[1])) out.push(m[1]);
+  while ((m = re.exec(html)) !== null) {
+    if (/^[a-z][a-z\d+.-]*:/i.test(m[1])) continue;
+    const clean = m[1].split(/[?#]/, 1)[0];
+    out.push(repoPath(path.resolve(path.dirname(pageFile), clean)));
+  }
   return out;
 }
 
@@ -72,25 +88,27 @@ function expected(page) {
   return { names: [...names].sort(), missing, byFile };
 }
 
-/* Every .js under js/ that exports a ZS name but no page loads. A new module
-   with no `<script>` tag is the silent failure a lint cannot catch. */
+/* Every product or reference .js module that exports a ZS name but no page
+   loads. A new module with no `<script>` tag is the silent failure a lint
+   cannot catch. */
 function orphans() {
   const loaded = new Set();
-  for (const p of PAGES) for (const rel of scripts(p)) loaded.add(rel.split(path.sep).join("/"));
+  for (const p of PAGES) for (const rel of scripts(p)) loaded.add(rel);
 
   const out = [];
-  (function walk(dir) {
+  function walk(dir) {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const abs = path.join(dir, e.name);
       if (e.isDirectory()) walk(abs);
       else if (e.name.endsWith(".js")) {
-        const rel = path.relative(ROOT, abs).split(path.sep).join("/");
+        const rel = repoPath(abs);
         if (loaded.has(rel)) continue;
         const ex = exportsOf(rel);
         if (ex && ex.length) out.push({ file: rel, exports: ex });
       }
     }
-  })(path.join(ROOT, "js"));
+  }
+  for (const rel of MODULE_ROOTS) walk(path.join(ROOT, rel));
   return out;
 }
 
