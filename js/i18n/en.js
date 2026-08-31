@@ -157,7 +157,18 @@
     "campaign.quit": "Main Menu",
     "campaign.orders": "Orders",
     "campaign.hint":
-      "Click a seat to select · drag to pan · wheel to zoom · right-click to march · Enter ends the season · C returns to your capital",
+      "Click a glowing commandery for its orders · click your own banner to move it · wheel to zoom · C returns to your capital",
+    "campaign.guide.turn": "Your season",
+    "campaign.guide.resolving": "The season turns…",
+    "campaign.guide.idle":
+      "Click one of your glowing commanderies to give orders, or click your own army to move it.",
+    "campaign.guide.mine": "Your commandery — recruit, build, or raise an army on the right.",
+    "campaign.guide.other":
+      "Not yours. Pick one of your armies first, then click here to march on it.",
+    "campaign.guide.army":
+      "Army in hand. Click any commandery to march there, or drag the banner onto it. Esc to let go.",
+    "campaign.tip.hold": "Garrison {garrison} · Loyalty {loyalty}%",
+    "campaign.tip.march": "March here · about {turns} seasons",
     "campaign.battle.title": "Dispatch from {place}",
     "campaign.battle.summary": "{kind} · {biome} · {layout} · yours {own} · theirs {foe}",
     "campaign.battle.kind.open": "Field battle",
@@ -212,11 +223,15 @@
     "campaign.prov.specialty": "Commandery",
 
     "campaign.dev.title": "Development",
+    "campaign.dev.cost": "{n} gold",
+    "campaign.dev.capped": "Complete",
     "campaign.dev.income": "Market",
     "campaign.dev.food": "Farmland",
     "campaign.dev.recruit": "Levy rolls",
     "campaign.dev.wall": "Walls",
     "campaign.recruit.do": "Recruit",
+    "campaign.recruit.men": "Men",
+    "campaign.recruit.cap": "up to {n}",
     "campaign.raise.do": "Raise army",
 
     "campaign.army.title": "{house} army",
@@ -235,7 +250,6 @@
     "campaign.army.marchTo": "to {place} · {turns} seasons out",
     "campaign.army.halt": "Halt",
     "campaign.army.disband": "Disband",
-    "campaign.army.orderHint": "Right-click the map to march",
 
     "campaign.msg.marching": "On the road · about {turns} seasons",
     "campaign.msg.recruited": "{n} men recruited",

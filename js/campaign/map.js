@@ -285,21 +285,35 @@
     // the two great rivers, under everything
     for (let i = 0; i < RIVERS.length; i++) ZS.env.river(c, RIVERS[i], 9 - i * 2, 400 + i * 37);
 
-    // hill hatching where the biome says so, before the borders
+    /* Terrain is a hint, not a subject. One motif per province instead of two,
+       set well clear of the seat — the seat's own 60 px carries the flag, the
+       name and any stack standing there, and the old pair of hills landed
+       inside it. Drawn through `terrain()` at low alpha so it stays under the
+       ownership wash rather than competing with it. */
+    c.save();
+    c.globalAlpha = 0.42;
     for (const p of map.list) {
-      if (p.biome !== "hill") continue;
       const seed = hashId(p.id);
-      ZS.env.hill(c, p.x - 26, p.y + 16, 52, 18, seed);
-      ZS.env.hill(c, p.x + 10, p.y + 24, 40, 14, seed + 9);
+      if (p.biome === "hill") ZS.env.hill(c, p.x - 30, p.y + 30, 46, 15, seed);
+      else if (p.biome === "wood") ZS.env.tree(c, p.x - 26, p.y + 34, 8, "pine", seed);
     }
-    for (const p of map.list) {
-      if (p.biome !== "wood") continue;
-      const seed = hashId(p.id);
-      ZS.env.tree(c, p.x - 22, p.y + 24, 9, "pine", seed);
-      ZS.env.tree(c, p.x + 20, p.y + 28, 8, "oak", seed + 5);
-    }
+    c.restore();
 
-    // province borders
+    /* Routes under the borders, not over them: an edge is a road between two
+       seats, and reading it as a border was half the map's confusion. Faint
+       enough to be a texture until the player is looking for one. */
+    c.strokeStyle = "rgba(120,100,80,0.20)";
+    c.lineWidth = 1;
+    c.setLineDash([5, 5]);
+    for (const [a, b] of ZS.data.provinceEdges) {
+      const pa = map.byId.get(a),
+        pb = map.byId.get(b);
+      if (!pa || !pb) continue;
+      ZS.wline(c, pa.x, pa.y, pb.x, pb.y, hashId(a + b), 1.1);
+    }
+    c.setLineDash([]);
+
+    // province borders, last of the static layers so they read as the division
     c.strokeStyle = INK_FAINT;
     c.lineWidth = 1.2;
     for (const p of map.list) {
@@ -308,18 +322,6 @@
       ZS.wpoly(c, poly, hashId(p.id) * 3.1, 1.6, true);
       c.stroke();
     }
-
-    // marching routes
-    c.strokeStyle = "rgba(120,100,80,0.34)";
-    c.lineWidth = 1.1;
-    for (const [a, b] of ZS.data.provinceEdges) {
-      const pa = map.byId.get(a),
-        pb = map.byId.get(b);
-      if (!pa || !pb) continue;
-      c.setLineDash([5, 4]);
-      ZS.wline(c, pa.x, pa.y, pb.x, pb.y, hashId(a + b), 1.1);
-    }
-    c.setLineDash([]);
 
     // the sheet's own frame, drawn last so it sits over the wash
     c.strokeStyle = INK_SOFT;

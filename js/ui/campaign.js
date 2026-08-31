@@ -1,10 +1,22 @@
 /* ZS.CampaignUI — the campaign's DOM overlay (docs/SANGUO-DESIGN.md §2, §4.1).
 
-   The canvas owns the map; this owns everything you press. Three pieces:
+   The canvas owns the map; this owns everything you press. Five pieces:
 
-     the bar     date, treasury, holdings, and End Turn
+     the bar     date, treasury, holdings, and End Season
+     the guide   one line saying what to do *right now*, driven by what is
+                 selected. This game is a real-time battle wrapped in a
+                 season, not a board game with a rulebook; a player who has to
+                 hunt for the verb has already lost the thread. The guide is
+                 the cheapest possible answer to "what do I click".
+     the tip     what the pointer is over, read off the map without clicking
      the panel   whatever is selected — a province or a stack — and its orders
      the report  what happened while the season turned
+
+   **Orders before facts.** The panel used to open with six rows of numbers
+   and bury Recruit at the bottom in a 0.78rem chip. It now leads with the
+   things you can *do* — full-width, priced, one per line — and keeps the
+   numbers under them, because the numbers are what you check after you have
+   decided, not before.
 
    Plus the faction picker, which is a menu panel rather than a campaign one:
    it is the last thing you do before a campaign exists.
@@ -49,21 +61,60 @@
     ]);
   }
 
+  /* A block of facts as a two-column grid rather than six full-width rows —
+     the same numbers in half the height, which is what lets the orders stay
+     above the fold. */
+  function facts(pairs) {
+    const g = el("div", { class: "cfacts" });
+    for (const [k, v] of pairs) {
+      if (v === null || v === undefined) continue;
+      g.appendChild(el("span", { class: "fk", text: k }));
+      g.appendChild(el("span", { class: "fv", text: String(v) }));
+    }
+    return g;
+  }
+
+  /* The faction's colour as a chip. The map's whole legend is "this colour is
+     this warlord", so every place the overlay names one carries the swatch —
+     the panel title, the tooltip, an army line, the picker card. */
+  /* Development level as filled dots. Drawn as elements rather than typed as
+     characters: index.html ships a glyph subset, and a bullet in a label is a
+     glyph the subset would have to carry for the sake of four buttons. */
+  function pips(level, max) {
+    const g = el("span", { class: "d-pips" });
+    for (let i = 0; i < max; i++)
+      g.appendChild(el("i", { class: "pip" + (i < level ? " on" : "") }));
+    return g;
+  }
+
+  function swatch(fd) {
+    const s = el("span", { class: "cswatch" });
+    if (fd) s.style.background = "rgb(" + fd.tint[0] + "," + fd.tint[1] + "," + fd.tint[2] + ")";
+    else s.classList.add("none");
+    return s;
+  }
+
   const UI = {
     view: null,
     root: null,
     bar: null,
+    guide: null,
+    tip: null,
     panel: null,
     report: null,
     encounter: null,
     pick: null,
     built: false,
+    _tipKey: "",
+    _tipH: 0,
 
     build() {
       if (this.built) return this;
       this.root = document.getElementById("ui");
 
       this.bar = el("div", { id: "camp-bar", class: "camp-bar" });
+      this.guide = el("div", { id: "camp-guide", class: "camp-guide" });
+      this.tip = el("div", { id: "camp-tip", class: "camp-tip" });
       this.panel = el("aside", { id: "camp-panel", class: "camp-panel" });
       this.report = el("div", { id: "camp-report", class: "camp-report" });
       this.encounter = el("section", {
@@ -73,7 +124,15 @@
         "aria-modal": "true",
       });
       this.pick = el("div", { id: "camp-pick", class: "panel camp-pick" });
-      for (const n of [this.bar, this.panel, this.report, this.encounter, this.pick]) {
+      for (const n of [
+        this.bar,
+        this.guide,
+        this.tip,
+        this.panel,
+        this.report,
+        this.encounter,
+        this.pick,
+      ]) {
         this.root.appendChild(n);
       }
 
@@ -142,6 +201,7 @@
       this.view = view;
       this.root.classList.add("in-campaign");
       this.bar.classList.add("on");
+      this.guide.classList.add("on");
       this.panel.classList.add("on");
       this.refresh();
       this.showReport(null);
@@ -155,9 +215,12 @@
       if (!this.root) return;
       this.root.classList.remove("in-campaign");
       this.bar.classList.remove("on");
+      this.guide.classList.remove("on");
+      this.tip.classList.remove("on");
       this.panel.classList.remove("on");
       this.report.classList.remove("on");
       this.encounter.classList.remove("on");
+      this._tipKey = "";
     },
 
     /* ---- the bar --------------------------------------------------------- */
@@ -165,58 +228,179 @@
     refresh() {
       if (!this.view || !this.view.camp) return;
       this.drawBar();
+      this.drawGuide();
       this.drawPanel();
+      this._tipKey = ""; // whatever the tip was showing may have just changed
     },
 
+    /* ---- the guide ------------------------------------------------------- */
+
+    /* One sentence, always on screen, naming the next thing to do. It is
+       driven entirely by what is selected, so it is never stale and never a
+       rulebook: no stack held, go pick one of yours; a stack held, the map is
+       now a target; a province of yours selected, the orders are on the right.
+       This is the difference between a player who explores and one who
+       guesses. */
+    drawGuide() {
+      const view = this.view;
+      const camp = view.camp;
+      const t = (k, p) => ZS.i18n.t(k, p);
+      this.guide.textContent = "";
+      if (!view.playerTurn) {
+        this.guide.appendChild(
+          el("span", { class: "cg-wait", text: t("campaign.guide.resolving") }),
+        );
+        return;
+      }
+      const held = view.heldArmy && view.heldArmy();
+      let key = "campaign.guide.idle";
+      if (held) key = "campaign.guide.army";
+      else if (view.selProvince && camp.owner(view.selProvince) === camp.playerFactionId) {
+        key = "campaign.guide.mine";
+      } else if (view.selProvince) key = "campaign.guide.other";
+      this.guide.appendChild(el("span", { class: "cg-turn", text: t("campaign.guide.turn") }));
+      this.guide.appendChild(el("span", { class: "cg-say", text: t(key) }));
+    },
+
+    /* ---- the tooltip ------------------------------------------------------ */
+
+    /* What the pointer is over, without a click — the map can then stop
+       printing a garrison under all fifty-seven seats. Rebuilt only when the
+       hover actually changed; a pointermove inside one province just moves the
+       box. */
+    showTip(cx, cy, changed) {
+      const view = this.view;
+      if (!view || !view.camp) return;
+      const camp = view.camp;
+      const t = (k, p) => ZS.i18n.t(k, p);
+      const id = view.hoverProvince;
+      if (!id) {
+        this.hideTip();
+        return;
+      }
+      const plan = view._plan;
+      const key = id + "|" + (view.hoverArmy || "") + "|" + (plan ? plan.to + plan.err : "");
+      const rebuilt = changed || key !== this._tipKey;
+      if (rebuilt) {
+        this._tipKey = key;
+        const pd = ZS.CampaignMap.province(id);
+        const pr = camp.prov(id);
+        const owner = pr && pr.owner ? camp.factionDef(pr.owner) : null;
+        this.tip.textContent = "";
+        this.tip.appendChild(
+          el("div", { class: "tip-head" }, [
+            swatch(owner),
+            el("span", { text: pd ? ZS.i18n.t(pd.name) : id }),
+          ]),
+        );
+        this.tip.appendChild(
+          el("div", {
+            class: "tip-sub",
+            text: owner ? ZS.i18n.t(owner.name) : t("campaign.prov.unheld"),
+          }),
+        );
+        if (pr && pr.owner) {
+          this.tip.appendChild(
+            el("div", {
+              class: "tip-line",
+              text: t("campaign.tip.hold", {
+                garrison: ZS.i18n.n(pr.garrison),
+                loyalty: pr.loyalty,
+              }),
+            }),
+          );
+        }
+        for (const a of camp.armiesAt(id)) {
+          const afd = camp.factionDef(a.faction);
+          this.tip.appendChild(
+            el("div", { class: "tip-line" + (a.id === view.hoverArmy ? " on" : "") }, [
+              swatch(afd),
+              el("span", {
+                text: t("campaign.army.chip", {
+                  house: afd ? ZS.i18n.t(afd.house) : "?",
+                  n: ZS.i18n.n(a.troops),
+                }),
+              }),
+            ]),
+          );
+        }
+        if (plan && plan.to === id) {
+          this.tip.appendChild(
+            el("div", {
+              class: "tip-order" + (plan.path ? "" : " bad"),
+              text: plan.path
+                ? t("campaign.tip.march", { turns: plan.turns })
+                : ZS.i18n.t(plan.err || "campaign.err.noRoute"),
+            }),
+          );
+        }
+      }
+      /* Kept clear of the pointer, and flipped before it can run off screen.
+         The height is measured only when the contents changed — reading
+         offsetHeight forces layout, and this runs on every pointermove. */
+      const w = 210,
+        h = this._tipH || 90;
+      const x = cx + 18 + w > window.innerWidth ? cx - 18 - w : cx + 18;
+      const y = cy + 16 + h > window.innerHeight ? Math.max(4, cy - 16 - h) : cy + 16;
+      this.tip.style.transform = "translate(" + Math.round(x) + "px," + Math.round(y) + "px)";
+      this.tip.classList.add("on");
+      if (rebuilt) this._tipH = this.tip.offsetHeight || 90;
+    },
+
+    hideTip() {
+      if (this.tip) this.tip.classList.remove("on");
+      this._tipKey = "";
+    },
+
+    /* Who you are and what you have, then the one button that ends the season.
+       End Season is the loudest thing on the bar on purpose: it is the only
+       control that advances time, and a player who cannot find it is stuck. */
     drawBar() {
       const camp = this.view.camp;
       const f = camp.player();
       const fd = camp.factionDef(camp.playerFactionId);
       const t = (k, p) => ZS.i18n.t(k, p);
       this.bar.textContent = "";
+      this.bar.appendChild(
+        el("span", { class: "cb-who" }, [
+          swatch(fd),
+          el("span", { class: "cb-faction", text: fd ? ZS.i18n.t(fd.name) : "" }),
+        ]),
+      );
       this.bar.appendChild(el("span", { class: "cb-date", text: camp.dateText() }));
-      this.bar.appendChild(el("span", { class: "cb-faction", text: fd ? ZS.i18n.t(fd.name) : "" }));
       if (f) {
-        this.bar.appendChild(
-          el("span", { class: "cb-stat", text: t("campaign.bar.gold", { n: ZS.i18n.n(f.gold) }) }),
-        );
-        this.bar.appendChild(
-          el("span", { class: "cb-stat", text: t("campaign.bar.food", { n: ZS.i18n.n(f.food) }) }),
-        );
-        this.bar.appendChild(
-          el("span", {
-            class: "cb-stat",
-            text: t("campaign.bar.provinces", { n: camp.provincesOf(camp.playerFactionId).length }),
-          }),
-        );
-        this.bar.appendChild(
-          el("span", {
-            class: "cb-stat",
-            text: t("campaign.bar.troops", { n: ZS.i18n.nc(camp.troopsOf(camp.playerFactionId)) }),
-          }),
-        );
+        const stats = el("span", { class: "cb-stats" });
+        const stat = (key, value) =>
+          stats.appendChild(el("span", { class: "cb-stat", text: t(key, { n: value }) }));
+        stat("campaign.bar.gold", ZS.i18n.n(f.gold));
+        stat("campaign.bar.food", ZS.i18n.n(f.food));
+        stat("campaign.bar.provinces", camp.provincesOf(camp.playerFactionId).length);
+        stat("campaign.bar.troops", ZS.i18n.nc(camp.troopsOf(camp.playerFactionId)));
         if (ZS.CampaignVictory) {
           const progress = ZS.CampaignVictory.progress(camp, camp.playerFactionId, camp.goal);
-          this.bar.appendChild(
+          stats.appendChild(
             el("span", {
               class: "cb-stat",
               text: t("campaign.bar.mandate", { held: progress.held, total: progress.total }),
             }),
           );
         }
+        this.bar.appendChild(stats);
       }
-      this.bar.appendChild(
+      const acts = el("div", { class: "cb-acts" });
+      acts.appendChild(
         btn("mbtn small", t("campaign.roster.open"), () => this.showRoster(), {
           id: "btn-campaign-roster",
         }),
       );
-      this.endBtn = btn("mbtn small", t("campaign.endTurn"), () => this.endTurn(), {
-        id: "btn-end-turn",
-      });
-      this.bar.appendChild(this.endBtn);
-      this.bar.appendChild(
+      acts.appendChild(
         btn("mbtn small", t("campaign.quit"), () => ZS.App.go("menu"), { id: "btn-quit-campaign" }),
       );
+      this.endBtn = btn("mbtn small end", t("campaign.endTurn"), () => this.endTurn(), {
+        id: "btn-end-turn",
+      });
+      acts.appendChild(this.endBtn);
+      this.bar.appendChild(acts);
     },
 
     /* ---- the contextual panel -------------------------------------------- */
@@ -241,7 +425,9 @@
       const mine = pr.owner === camp.playerFactionId;
       const box = el("section", { class: "cblock", "data-province": id });
 
-      box.appendChild(el("h3", { class: "ctitle", text: ZS.i18n.t(pd.name) }));
+      box.appendChild(
+        el("h3", { class: "ctitle" }, [swatch(owner), el("span", { text: ZS.i18n.t(pd.name) })]),
+      );
       box.appendChild(
         el("div", {
           class: "csub",
@@ -251,27 +437,10 @@
           }),
         }),
       );
-      box.appendChild(row(t("campaign.prov.garrison"), ZS.i18n.n(pr.garrison)));
-      box.appendChild(row(t("campaign.prov.loyalty"), pr.loyalty + "%"));
-      if (ZS.CampaignLogistics) {
-        const specialty = ZS.CampaignLogistics.specialty(pd);
-        box.appendChild(row(t("campaign.prov.specialty"), ZS.i18n.t(specialty.name)));
-        box.appendChild(el("p", { class: "faint", text: ZS.i18n.t(specialty.description) }));
-      }
-      if (pr.owner) {
-        box.appendChild(
-          row(
-            t("campaign.prov.governor"),
-            pr.governor ? ZS.Roster.line(pr.governor) : t("campaign.general.none"),
-          ),
-        );
-      }
-      if (mine) {
-        box.appendChild(row(t("campaign.prov.income"), ZS.i18n.n(camp.income(id))));
-        box.appendChild(row(t("campaign.prov.food"), ZS.i18n.n(camp.foodYield(id))));
-        box.appendChild(row(t("campaign.prov.cap"), ZS.i18n.n(camp.recruitCap(id))));
-      }
 
+      /* Any stack standing here, as the first thing you can press: a stack is
+         the piece that *does* something, and finding it used to mean scrolling
+         past six rows of yield figures. */
       const here = camp.armiesAt(id);
       if (here.length) {
         const list = el("div", { class: "carmies" });
@@ -285,62 +454,100 @@
             }),
             () => this.view.selectArmy(army.id),
           );
+          b.insertBefore(swatch(afd), b.firstChild);
           list.appendChild(b);
         }
         box.appendChild(list);
       }
 
-      if (!mine) return box;
+      if (mine) {
+        /* Muster: how many, then the two verbs. Full width, priced, and above
+           the numbers — this is the order a player actually gives on their own
+           ground, so it is the first thing under the title. */
+        const cap = Math.max(0, camp.recruitCap(id));
+        const num = el("input", {
+          type: "number",
+          class: "cnum",
+          min: "0",
+          step: "100",
+          max: String(cap),
+          value: String(Math.min(500, cap)),
+          id: "camp-men",
+          "aria-label": t("campaign.recruit.men"),
+        });
+        box.appendChild(el("div", { class: "clabel", text: t("campaign.orders") }));
+        box.appendChild(
+          el("div", { class: "cmuster" }, [
+            num,
+            el("span", { class: "cmuster-cap", text: t("campaign.recruit.cap", { n: cap }) }),
+          ]),
+        );
+        const acts = el("div", { class: "cacts" }, [
+          btn("cact", t("campaign.recruit.do"), () => {
+            const res = ZS.Turn.recruit(camp, id, num.valueAsNumber | 0);
+            this.notify(res, "campaign.msg.recruited", { n: num.valueAsNumber | 0 });
+          }),
+          btn("cact primary", t("campaign.raise.do"), () => {
+            const res = ZS.Turn.raise(camp, id, num.valueAsNumber | 0, null);
+            if (res.ok) this.view.selectArmy(res.army.id);
+            this.notify(res, "campaign.msg.raised", { n: num.valueAsNumber | 0 });
+          }),
+        ]);
+        box.appendChild(acts);
 
-      /* Develop — one button per track, priced, disabled at the cap. */
-      const dev = el("div", { class: "cgrid" });
-      for (const track of ZS.Campaign.DEV_TRACKS) {
-        const lvl = pr.dev[track] | 0;
-        const cost = camp.devCost(id, track);
-        const capped = !isFinite(cost);
-        const b = btn(
-          "cchip",
-          t("campaign.dev." + track) +
-            " " +
-            lvl +
-            "/" +
-            ZS.Campaign.DEV_MAX[track] +
-            (capped ? "" : " · " + cost),
-          () => {
+        /* Develop — one button per track, priced, disabled at the cap, with
+           the level drawn as pips so "how far along am I" is a glance. */
+        box.appendChild(el("div", { class: "clabel", text: t("campaign.dev.title") }));
+        const dev = el("div", { class: "cdev" });
+        for (const track of ZS.Campaign.DEV_TRACKS) {
+          const lvl = pr.dev[track] | 0;
+          const max = ZS.Campaign.DEV_MAX[track];
+          const cost = camp.devCost(id, track);
+          const capped = !isFinite(cost);
+          const b = el("button", { class: "cact dev", "data-dev": track }, [
+            el("span", { class: "d-name", text: t("campaign.dev." + track) }),
+            pips(lvl, max),
+            el("span", {
+              class: "d-cost",
+              text: capped ? t("campaign.dev.capped") : t("campaign.dev.cost", { n: cost }),
+            }),
+          ]);
+          b.addEventListener("click", () => {
             const res = ZS.Turn.develop(camp, id, track);
             this.notify(res, "campaign.msg.developed", { track: t("campaign.dev." + track) });
-          },
-          { "data-dev": track },
-        );
-        if (capped || camp.player().gold < cost) b.disabled = true;
-        dev.appendChild(b);
+          });
+          if (capped || camp.player().gold < cost) b.disabled = true;
+          dev.appendChild(b);
+        }
+        box.appendChild(dev);
       }
-      box.appendChild(el("div", { class: "clabel", text: t("campaign.dev.title") }));
-      box.appendChild(dev);
 
-      /* Recruit and raise — a number field plus the verb, so the player says
-         how many rather than being given three fixed buttons. */
-      const num = el("input", {
-        type: "number",
-        class: "cnum",
-        min: "0",
-        step: "100",
-        value: String(Math.min(500, Math.max(0, camp.recruitCap(id)))),
-        id: "camp-men",
-      });
-      const acts = el("div", { class: "cgrid" }, [
-        btn("cchip", t("campaign.recruit.do"), () => {
-          const res = ZS.Turn.recruit(camp, id, num.valueAsNumber | 0);
-          this.notify(res, "campaign.msg.recruited", { n: num.valueAsNumber | 0 });
-        }),
-        btn("cchip", t("campaign.raise.do"), () => {
-          const res = ZS.Turn.raise(camp, id, num.valueAsNumber | 0, null);
-          if (res.ok) this.view.selectArmy(res.army.id);
-          this.notify(res, "campaign.msg.raised", { n: num.valueAsNumber | 0 });
-        }),
-      ]);
-      box.appendChild(el("div", { class: "clabel", text: t("campaign.orders") }));
-      box.appendChild(el("div", { class: "crow" }, [num, acts]));
+      /* The numbers, under the orders, two to a line. */
+      const specialty = ZS.CampaignLogistics ? ZS.CampaignLogistics.specialty(pd) : null;
+      const pairs = [
+        [t("campaign.prov.garrison"), ZS.i18n.n(pr.garrison)],
+        [t("campaign.prov.loyalty"), pr.loyalty + "%"],
+      ];
+      if (mine) {
+        pairs.push([t("campaign.prov.income"), ZS.i18n.n(camp.income(id))]);
+        pairs.push([t("campaign.prov.food"), ZS.i18n.n(camp.foodYield(id))]);
+        pairs.push([t("campaign.prov.cap"), ZS.i18n.n(camp.recruitCap(id))]);
+      }
+      if (specialty) pairs.push([t("campaign.prov.specialty"), ZS.i18n.t(specialty.name)]);
+      box.appendChild(facts(pairs));
+      if (specialty) {
+        box.appendChild(el("p", { class: "faint", text: ZS.i18n.t(specialty.description) }));
+      }
+      if (pr.owner) {
+        box.appendChild(
+          row(
+            t("campaign.prov.governor"),
+            pr.governor ? ZS.Roster.line(pr.governor) : t("campaign.general.none"),
+          ),
+        );
+      }
+
+      if (!mine) return box;
 
       /* Appoint a governor from whoever is not already leading a stack or
          minding another seat. Hidden entirely when no almanac is loaded —
@@ -376,30 +583,57 @@
 
     armyBlock(camp, a) {
       const t = (k, p) => ZS.i18n.t(k, p);
-      const box = el("section", { class: "cblock", "data-army": a.id });
+      const mine = a.faction === camp.playerFactionId;
+      const box = el("section", {
+        class: "cblock army" + (mine ? " held" : ""),
+        "data-army": a.id,
+      });
       const fd = camp.factionDef(a.faction);
       box.appendChild(
-        el("h3", {
-          class: "ctitle",
-          text: t("campaign.army.title", { house: fd ? ZS.i18n.t(fd.house) : "?" }),
-        }),
+        el("h3", { class: "ctitle" }, [
+          swatch(fd),
+          el("span", { text: t("campaign.army.title", { house: fd ? ZS.i18n.t(fd.house) : "?" }) }),
+        ]),
       );
-      box.appendChild(row(t("campaign.army.troops"), ZS.i18n.n(a.troops)));
-      box.appendChild(row(t("campaign.army.strength"), ZS.i18n.n(ZS.Army.strength(a))));
-      box.appendChild(row(t("campaign.army.fatigue"), Math.round(a.fatigue * 100) + "%"));
-      if (a.supply) {
+      /* The one instruction that matters while a stack is in hand, said where
+         the player is already looking. */
+      if (mine) {
+        box.appendChild(el("div", { class: "cbanner", text: t("campaign.guide.army") }));
+      }
+
+      if (ZS.Army.isMarching(a)) {
+        const dest = ZS.CampaignMap.province(a.path[a.path.length - 1]);
         box.appendChild(
-          row(
-            t("campaign.army.supply"),
-            t("campaign.army.supply." + a.supply) +
-              (a.supplyDistance >= 0
-                ? " · " + t("campaign.army.supplyDistance", { n: a.supplyDistance })
-                : ""),
-          ),
+          el("div", {
+            class: "csub",
+            text: t("campaign.army.marchTo", {
+              place: dest ? ZS.i18n.t(dest.name) : "?",
+              turns:
+                a.left +
+                ZS.CampaignMap.pathCost([a.at].concat(a.path)) -
+                ZS.CampaignMap.cost(a.at, a.path[0]),
+            }),
+          }),
         );
       }
 
       const men = ZS.Army.men(a);
+      box.appendChild(
+        facts([
+          [t("campaign.army.troops"), ZS.i18n.n(a.troops)],
+          [t("campaign.army.strength"), ZS.i18n.n(ZS.Army.strength(a))],
+          [t("campaign.army.fatigue"), Math.round(a.fatigue * 100) + "%"],
+          [
+            t("campaign.army.supply"),
+            a.supply
+              ? t("campaign.army.supply." + a.supply) +
+                (a.supplyDistance >= 0
+                  ? " · " + t("campaign.army.supplyDistance", { n: a.supplyDistance })
+                  : "")
+              : null,
+          ],
+        ]),
+      );
       box.appendChild(
         row(
           t("campaign.army.comp"),
@@ -414,35 +648,18 @@
         }
       }
 
-      if (ZS.Army.isMarching(a)) {
-        const dest = ZS.CampaignMap.province(a.path[a.path.length - 1]);
-        box.appendChild(
-          row(
-            t("campaign.army.marching"),
-            t("campaign.army.marchTo", {
-              place: dest ? ZS.i18n.t(dest.name) : "?",
-              turns:
-                a.left +
-                ZS.CampaignMap.pathCost([a.at].concat(a.path)) -
-                ZS.CampaignMap.cost(a.at, a.path[0]),
-            }),
-          ),
-        );
-      }
-
-      if (a.faction !== camp.playerFactionId) return box;
-      const acts = el("div", { class: "cgrid" }, [
-        btn("cchip", t("campaign.army.halt"), () => {
+      if (!mine) return box;
+      const acts = el("div", { class: "cacts" }, [
+        btn("cact", t("campaign.army.halt"), () => {
           const res = ZS.Turn.halt(camp, a.id);
           this.notify(res, "campaign.msg.halted");
         }),
-        btn("cchip", t("campaign.army.disband"), () => {
+        btn("cact", t("campaign.army.disband"), () => {
           const res = ZS.Turn.disband(camp, a.id);
           if (res.ok) this.view.selArmy = null;
           this.notify(res, "campaign.msg.disbanded");
         }),
       ]);
-      box.appendChild(el("div", { class: "clabel", text: t("campaign.army.orderHint") }));
       box.appendChild(acts);
 
       /* Assign / release. Three is the cap (§4.1), and a general is in exactly
@@ -488,6 +705,13 @@
     endTurn() {
       const camp = this.view && this.view.camp;
       if (!camp || camp.over) return;
+      /* The halo says "the board is waiting on you". From here it is not, so
+         it stops breathing until the season comes back. */
+      this.view.playerTurn = false;
+      this.view.selArmy = null;
+      this.view._plan = null;
+      this.hideTip();
+      this.drawGuide();
       if (ZS.CampaignEvents) {
         const tale = ZS.CampaignEvents.pending(camp);
         if (tale) {
@@ -510,6 +734,10 @@
       if (!camp || !outcome) return;
       const pending = outcome.pending || (outcome.setup ? outcome : null);
       if (pending) {
+        /* A battle to answer is still the board waiting on the player, so the
+           halo comes back on for the decision. */
+        this.view.playerTurn = true;
+        this.drawGuide();
         this.showEncounter(pending);
         return;
       }
@@ -564,6 +792,7 @@
       /* The selection may have marched, died or been disbanded under us. */
       if (this.view.selArmy && !camp.armies[this.view.selArmy]) this.view.selArmy = null;
       if (this.endBtn) this.endBtn.disabled = false;
+      this.view.playerTurn = true;
       this.refresh();
       this.showReport(rep);
       /* §5.4: the autosave fires at the end of a World phase, which is exactly

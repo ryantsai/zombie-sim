@@ -123,7 +123,12 @@
     /* Order a stack to a province. The route avoids hostile ground it does not
        have to enter — the destination itself is always allowed, because
        marching into it is usually the point. */
-    march(camp, armyId, destId) {
+    /* What `march` *would* do, without doing it. The map draws a live route
+       and a turn count under the cursor while you are choosing where to send a
+       stack, and that preview has to answer with the same rules the order
+       does — otherwise the line you were shown is not the march you get. One
+       function, two callers. */
+    marchPlan(camp, armyId, destId) {
       const a = camp.armies[armyId];
       if (!a) return fail("campaign.err.noArmy");
       if (a.faction !== camp.playerFactionId) return fail("campaign.err.notYours");
@@ -135,8 +140,14 @@
         return o !== null && o !== mine;
       });
       if (!path) return fail("campaign.err.noRoute");
-      ZS.Army.setPath(a, path);
-      return ok({ path, turns: ZS.CampaignMap.pathCost(path) });
+      return ok({ army: a, path, turns: ZS.CampaignMap.pathCost(path) });
+    },
+
+    march(camp, armyId, destId) {
+      const plan = this.marchPlan(camp, armyId, destId);
+      if (!plan.ok) return plan;
+      ZS.Army.setPath(plan.army, plan.path);
+      return ok({ path: plan.path, turns: plan.turns });
     },
 
     halt(camp, armyId) {

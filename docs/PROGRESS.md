@@ -769,3 +769,41 @@ was gating, and could not tell you so.
   `stallGiveups` instrumentation: an aggressive 16-seed diagnostic resolved in
   40.8–129.6 s but invoked the watchdog 20 times across 15 battles, keeping
   pacing issue 3 open.
+- **2026-08-31 (cont.)** — redesigned the campaign interface. The map had been
+  drawing everything it knew at once — a garrison under all 57 seats, a troop
+  count over every token, planted capital banners, two hills and two trees per
+  province — over an ownership wash whose 22 tints included six browns and six
+  blue-greys, so the two questions a strategy map has to answer at a glance
+  ("whose is that" and "which of these is mine") both needed a squint.
+
+  Four changes, in the order they mattered. **The palette** was re-solved
+  rather than nudged: five warlord colours are pinned by tradition (Cao blue,
+  Sun red, Liu Bei green, Yuan gold, Han wine) and the other seventeen chosen
+  greedily against *Voronoi* adjacency — cells that touch on the sheet, not
+  roads — judged on distance as washed onto cream rather than raw, because a
+  third-opacity wash flattens hue three times faster than the numbers suggest.
+  Result: no pair closer than 39 in RGB, no *touching* pair closer than 79.
+  **One flag per province** replaced the capital-only planted banner, drawn in
+  the owner's tint on a short pole rooted in the seat, so colour and flag say
+  the same thing instead of competing. **The noise came out** — garrison and
+  troop counts moved to hover-only (token size now carries strength), terrain
+  dropped to one motif per province set clear of the seat, roads went under the
+  borders at a third the contrast, and names became a final pass so nothing is
+  ever drawn over a word. **The player's own ground glows** in their colour
+  while the season is waiting on them, and stops while it resolves.
+
+  Interaction was rebuilt around the fact that this is a real-time battle game
+  wrapped in a season, not a board game: a guide line always names the next
+  thing to do, a tooltip reads any province without a click, and a stack is
+  taken in hand by clicking its token and sent by clicking (or dragging onto)
+  a province — with the route and its cost in seasons drawn before the order is
+  given. Right-click still marches. The panel leads with orders as full-width
+  buttons and keeps the numbers under them, two to a line.
+
+  Three real bugs fell out: pressing a token both selected it and armed a click
+  that deselected it; two stacks in one seat were drawn at the same point, so
+  the buried one could never be clicked; and hit-testing read a token layout
+  that only the draw pass refreshed, so an order landing between frames missed.
+  New suite `test/sanguo-campaign-ui.js` (25) covers the palette, the guide,
+  the tooltip, both march gestures, panning, and the halo's turn state.
+

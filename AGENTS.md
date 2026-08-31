@@ -294,11 +294,15 @@ by the other three pages:
   block move), `js/battle/formation.js` (formations as data),
   `js/battle/command.js` (selection, control groups, orders)
 
-Verify: `npm test` — `test/sanguo-p0.js` (45), `test/sanguo-p1.js` (62),
-`test/sanguo-p3.js` (121), `test/pages-regression.js` (23) and
-`tools/check-generals.js` (200). The pages regression exists to prove the core
-changes below did not disturb the original three pages, and is the only thing
-that will tell you if they did.
+Verify: `npm test` — `test/sanguo-p0.js` (48), `test/sanguo-p1.js` (62),
+`test/sanguo-p3.js` (131), the P4-P7 suites, `test/sanguo-campaign-ui.js` (25),
+`test/pages-regression.js` (29) and `tools/check-generals.js` (200). The
+campaign UI suite guards the map *as an interface* — the warlord palette stays
+separable (much more so where two of them share a border on the sheet), the
+guide line and the tooltip track what is selected, and click-to-march and
+drag-to-march give the same order without panning the map. The pages regression
+exists to prove the core changes below did not disturb the original three
+pages, and is the only thing that will tell you if they did.
 
 **Core changes this page needed.** All opt-in, all no-ops elsewhere:
 

@@ -609,11 +609,38 @@ low-alpha washes and stable boil seeds, never bitmap assets.
 
 ### 7.6 Campaign-map art
 
-Same primitives, larger: provinces = `wpoly` blobs with a faction-wash fill and
-ink border; cities = a 3-`wline` gate glyph; armies = a single scaled general
-figure holding the faction banner, standing on the map; marching = a dotted
-`wline` along the route edge. The map is one paper pre-render (`sjit`, static)
-with the dynamic tokens drawn on top each frame.
+Same primitives, larger. The map is one paper pre-render (`sjit`, static — the
+sheet, its rivers, a single terrain motif per province, faint roads and the
+Voronoi borders) with the live layers drawn on top each frame: a faction-tinted
+wash inside each province, a glow around the player's own ground, the seats,
+the tokens, the orders, and last of all the names.
+
+Four rules decide what goes on it, and they were learned by getting all four
+wrong first:
+
+- **One colour per warlord, and it is the legend.** `faction.tint` is the
+  province wash, the cloth of the flag flown over every seat they hold, the
+  fill of their army tokens and the swatch beside their name in the overlay.
+  Nothing else is tinted, and no warlord is drawn in anyone else's colour —
+  which is why the flag is recoloured to the tint rather than keeping the
+  `ZS.flag` preset's own cloth. The 22 hues are checked by
+  `test/sanguo-campaign-ui.js`: no two closer than 35 in RGB, and no two whose
+  *cells touch on the sheet* closer than 70.
+- **One flag per province.** Whoever holds a commandery flies a 17×12 banner on
+  a short pole rooted in its seat glyph. A warlord's capital flies the same
+  flag on a heavier staff. Not a second marker, not a banner at capitals only,
+  and never two flags near one seat.
+- **Identity always, quantity on demand.** The map answers *whose is this*,
+  *what is standing on it* and *how big is it* at all times; it prints a number
+  only for the one province or stack the pointer is on. A stack's token grows
+  with its men (log-scaled, 5→10.5 units), so strength reads before it is
+  counted. Fifty-seven garrison counts and thirty troop counts at once is what
+  made the first version unreadable.
+- **Nothing is drawn across a word.** Names are their own pass, after the
+  tokens and the routes, each on a knocked-out patch of paper.
+
+Marching is still a dotted `wline` along the route edge; the march the player
+is *aiming* is a heavier dashed line with a reticle on the target.
 
 ---
 
